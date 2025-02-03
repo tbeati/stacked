@@ -1,40 +1,64 @@
 package analyzer
 
 import (
-	"fmt"
 	"go/ast"
 	"go/types"
+	"slices"
+	"strings"
 
 	"golang.org/x/tools/go/analysis"
 )
 
-var Analyzer = &analysis.Analyzer{
-	Name: "stacked",
-	Doc:  "check for error not wrapped with stacked",
-	Run: func(pass *analysis.Pass) (interface{}, error) {
-		newChecker(pass).check()
-		return nil, nil
-	},
+func NewAnalyzer(generatedPackages []string) *analysis.Analyzer {
+	return &analysis.Analyzer{
+		Name: "stacked",
+		Doc:  "check for error not wrapped with stacked",
+		Run: func(pass *analysis.Pass) (interface{}, error) {
+			newChecker(generatedPackages, pass).check()
+			return nil, nil
+		},
+	}
 }
 
 type checker struct {
-	pass *analysis.Pass
+	generatedPackages     []string
+	pass                  *analysis.Pass
+	endOfStatementCounter int
+	toCheckIdent          *ast.Ident
 }
 
-func newChecker(pass *analysis.Pass) *checker {
+func newChecker(generatedPackage []string, pass *analysis.Pass) *checker {
 	return &checker{
-		pass: pass,
+		generatedPackages:     generatedPackage,
+		pass:                  pass,
+		endOfStatementCounter: -1,
 	}
 }
 
 func (c *checker) check() {
 	for _, file := range c.pass.Files {
-		ast.Inspect(file, func(n ast.Node) bool {
-			switch stmt := n.(type) {
+		c.endOfStatementCounter = -1
+		c.toCheckIdent = nil
+
+		ast.Inspect(file, func(node ast.Node) bool {
+			//fmt.Println("node", node, endOfStatementCounter)
+			c.checkStmt(node)
+
+			switch stmt := node.(type) {
 			case *ast.AssignStmt:
-				fmt.Println(stmt)
-				idents := c.handleAssignment(stmt)
-				fmt.Println(idents)
+				c.endOfStatementCounter = 1
+				errors := c.handleAssignment(stmt)
+				switch {
+				case len(errors) > 1:
+					c.pass.Reportf(stmt.Pos(), "multiple errors")
+				case len(errors) == 1:
+					c.toCheckIdent = errors[0]
+				}
+				//fmt.Println("errors", toCheckIdent)
+			case *ast.IfStmt:
+				//fmt.Println("if")
+			case *ast.ReturnStmt:
+				//fmt.Println("return")
 			}
 
 			return true
@@ -42,8 +66,52 @@ func (c *checker) check() {
 	}
 }
 
-func (c *checker) handleAssignment(stmt *ast.AssignStmt) []string {
-	var errorIdents []string
+func (c *checker) checkStmt(node ast.Node) {
+	if c.endOfStatementCounter == 0 {
+		c.endOfStatementCounter = -1
+	} else if c.endOfStatementCounter > -1 {
+		if node == nil {
+			c.endOfStatementCounter--
+		} else {
+			c.endOfStatementCounter++
+		}
+	}
+
+	if c.toCheckIdent != nil && c.endOfStatementCounter == -1 {
+		toCheckIdent := c.toCheckIdent
+		c.toCheckIdent = nil
+
+		assignStmt, ok := node.(*ast.AssignStmt)
+		if !ok {
+			c.report(toCheckIdent)
+			return
+		}
+
+		if len(assignStmt.Lhs) != 1 || len(assignStmt.Rhs) != 1 {
+			c.report(toCheckIdent)
+			return
+		}
+
+		call, ok := assignStmt.Rhs[0].(*ast.CallExpr)
+		if !ok {
+			c.report(toCheckIdent)
+			return
+		}
+
+		if !c.isStackTraceWrap(call) {
+			c.report(toCheckIdent)
+			return
+		}
+
+	}
+}
+
+func (c *checker) report(ident *ast.Ident) {
+	c.pass.Reportf(ident.Pos(), "%s is not wrapped with stacked", ident.Name)
+}
+
+func (c *checker) handleAssignment(stmt *ast.AssignStmt) []*ast.Ident {
+	var errorIdents []*ast.Ident
 
 	if len(stmt.Lhs) == len(stmt.Rhs) {
 		for i := range stmt.Lhs {
@@ -57,17 +125,25 @@ func (c *checker) handleAssignment(stmt *ast.AssignStmt) []string {
 				continue
 			}
 
+			if c.isInternalCall(call) {
+				continue
+			}
+
 			if c.isStackTraceWrap(call) {
 				continue
 			}
 
 			if c.returnsError(call) {
-				errorIdents = append(errorIdents, ident.Name)
+				errorIdents = append(errorIdents, ident)
 			}
 		}
 	} else {
 		call, ok := stmt.Rhs[0].(*ast.CallExpr)
 		if !ok {
+			return nil
+		}
+
+		if c.isInternalCall(call) {
 			return nil
 		}
 
@@ -83,7 +159,7 @@ func (c *checker) handleAssignment(stmt *ast.AssignStmt) []string {
 			}
 
 			if errors[i] {
-				errorIdents = append(errorIdents, ident.Name)
+				errorIdents = append(errorIdents, ident)
 			}
 		}
 	}
@@ -96,8 +172,43 @@ func isError(t types.Type) bool {
 }
 
 func (c *checker) isStackTraceWrap(call *ast.CallExpr) bool {
-	fmt.Println("func", call.Fun)
-	return false
+	selector, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok {
+		return false
+	}
+
+	if selector.Sel.Name != "Wrap" {
+		return false
+	}
+
+	ident, ok := selector.X.(*ast.Ident)
+	if !ok {
+		return false
+	}
+
+	obj := c.pass.TypesInfo.Uses[ident]
+
+	pkg, ok := obj.(*types.PkgName)
+	if !ok {
+		return false
+	}
+
+	return pkg.Imported().Path() == "github.com/beati/stacked"
+}
+
+func (c *checker) isInternalCall(call *ast.CallExpr) bool {
+	selector, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok {
+		return true
+	}
+
+	pkg := c.pass.TypesInfo.Uses[selector.Sel].Pkg().Path()
+
+	if slices.Contains(c.generatedPackages, pkg) {
+		return false
+	}
+
+	return strings.HasPrefix(pkg, c.pass.Module.Path)
 }
 
 func (c *checker) errorsByArg(call *ast.CallExpr) []bool {
