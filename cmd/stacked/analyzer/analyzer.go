@@ -103,6 +103,32 @@ func (c *checker) checkStmt(node ast.Node) {
 			return
 		}
 
+		ident, ok := assignStmt.Lhs[0].(*ast.Ident)
+		if !ok {
+			c.report(toCheckIdent)
+			return
+		}
+
+		if ident.Name != toCheckIdent.Name {
+			c.report(toCheckIdent)
+			return
+		}
+
+		if len(call.Args) != 1 {
+			c.report(toCheckIdent)
+			return
+		}
+
+		arg, ok := call.Args[0].(*ast.Ident)
+		if !ok {
+			c.report(toCheckIdent)
+			return
+		}
+
+		if arg.Name != toCheckIdent.Name {
+			c.report(toCheckIdent)
+			return
+		}
 	}
 }
 

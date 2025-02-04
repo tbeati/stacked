@@ -8,8 +8,27 @@ import (
 
 func callExternalPackage() error {
 	var name string
+	var err2 error
 
 	name, err := os.Hostname() // want "err is not wrapped with stacked"
+	if err != nil {
+		return err
+	}
+
+	name, err = os.Hostname() // want "err is not wrapped with stacked"
+	err = stacked.Wrap(err2)
+	if err != nil {
+		return err
+	}
+
+	name, err = os.Hostname() // want "err is not wrapped with stacked"
+	err2 = stacked.Wrap(err)
+	if err != nil {
+		return err
+	}
+
+	name, err = os.Hostname() // want "err is not wrapped with stacked"
+	err2 = stacked.Wrap(err2)
 	if err != nil {
 		return err
 	}
