@@ -7,7 +7,7 @@ import (
 )
 
 func callGeneratedCodeFuncAssignment() error {
-	err := generated.F() // want "err is not wrapped with stacked"
+	err := generated.F() // want "error returned by generated.F is not wrapped with stacked"
 	if err != nil {
 		return err
 	}
@@ -28,7 +28,7 @@ func callGeneratedCodeFuncAssignment() error {
 
 func callGeneratedCodeMethodAssignment() error {
 	s := generated.S{}
-	err := s.F() // want "err is not wrapped with stacked"
+	err := s.F() // want "error returned by s.F is not wrapped with stacked"
 	if err != nil {
 		return err
 	}
