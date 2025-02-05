@@ -2,6 +2,8 @@ package analyzer
 
 import (
 	"go/ast"
+	"go/printer"
+	"go/token"
 	"go/types"
 	"slices"
 	"strings"
@@ -24,7 +26,7 @@ type checker struct {
 	generatedPackages     []string
 	pass                  *analysis.Pass
 	endOfStatementCounter int
-	toCheckIdent          *ast.Ident
+	toCheckIdent          ast.Expr
 }
 
 func newChecker(generatedPackage []string, pass *analysis.Pass) *checker {
@@ -47,13 +49,7 @@ func (c *checker) check() {
 			switch stmt := node.(type) {
 			case *ast.AssignStmt:
 				c.endOfStatementCounter = 1
-				errors := c.handleAssignment(stmt)
-				switch {
-				case len(errors) > 1:
-					c.pass.Reportf(stmt.Pos(), "multiple errors")
-				case len(errors) == 1:
-					c.toCheckIdent = errors[0]
-				}
+				c.toCheckIdent = c.handleAssignment(stmt)
 				//fmt.Println("errors", toCheckIdent)
 			case *ast.IfStmt:
 				//fmt.Println("if")
@@ -103,13 +99,7 @@ func (c *checker) checkStmt(node ast.Node) {
 			return
 		}
 
-		ident, ok := assignStmt.Lhs[0].(*ast.Ident)
-		if !ok {
-			c.report(toCheckIdent)
-			return
-		}
-
-		if ident.Name != toCheckIdent.Name {
+		if !areAssignableExprEqual(assignStmt.Lhs[0], toCheckIdent) {
 			c.report(toCheckIdent)
 			return
 		}
@@ -119,34 +109,23 @@ func (c *checker) checkStmt(node ast.Node) {
 			return
 		}
 
-		arg, ok := call.Args[0].(*ast.Ident)
-		if !ok {
-			c.report(toCheckIdent)
-			return
-		}
-
-		if arg.Name != toCheckIdent.Name {
+		if !areAssignableExprEqual(call.Args[0], toCheckIdent) {
 			c.report(toCheckIdent)
 			return
 		}
 	}
 }
 
-func (c *checker) report(ident *ast.Ident) {
-	c.pass.Reportf(ident.Pos(), "%s is not wrapped with stacked", ident.Name)
+func (c *checker) report(errorExpr ast.Expr) {
+	c.pass.Reportf(errorExpr.Pos(), "%s is not wrapped with stacked", exprToString(errorExpr))
 }
 
-func (c *checker) handleAssignment(stmt *ast.AssignStmt) []*ast.Ident {
-	var errorIdents []*ast.Ident
+func (c *checker) handleAssignment(stmt *ast.AssignStmt) ast.Expr {
+	var assignedErrorExpr ast.Expr
 
 	if len(stmt.Lhs) == len(stmt.Rhs) {
 		for i := range stmt.Lhs {
-			ident, ok := stmt.Lhs[i].(*ast.Ident)
-			if !ok {
-				continue
-			}
-
-			call, ok := stmt.Rhs[i].(*ast.CallExpr)
+			call, ok := ast.Unparen(stmt.Rhs[i]).(*ast.CallExpr)
 			if !ok {
 				continue
 			}
@@ -160,11 +139,16 @@ func (c *checker) handleAssignment(stmt *ast.AssignStmt) []*ast.Ident {
 			}
 
 			if c.returnsError(call) {
-				errorIdents = append(errorIdents, ident)
+				if assignedErrorExpr != nil {
+					c.pass.Reportf(stmt.Pos(), "multiple errors")
+					return nil
+				}
+
+				assignedErrorExpr = ast.Unparen(stmt.Lhs[i])
 			}
 		}
 	} else {
-		call, ok := stmt.Rhs[0].(*ast.CallExpr)
+		call, ok := ast.Unparen(stmt.Rhs[0]).(*ast.CallExpr)
 		if !ok {
 			return nil
 		}
@@ -179,18 +163,18 @@ func (c *checker) handleAssignment(stmt *ast.AssignStmt) []*ast.Ident {
 
 		errors := c.errorsByArg(call)
 		for i := range stmt.Lhs {
-			ident, ok := stmt.Lhs[i].(*ast.Ident)
-			if !ok {
-				continue
-			}
-
 			if errors[i] {
-				errorIdents = append(errorIdents, ident)
+				if assignedErrorExpr != nil {
+					c.pass.Reportf(stmt.Pos(), "multiple errors")
+					return nil
+				}
+
+				assignedErrorExpr = ast.Unparen(stmt.Lhs[i])
 			}
 		}
 	}
 
-	return errorIdents
+	return assignedErrorExpr
 }
 
 func isError(t types.Type) bool {
@@ -259,10 +243,100 @@ func (c *checker) errorsByArg(call *ast.CallExpr) []bool {
 }
 
 func (c *checker) returnsError(call *ast.CallExpr) bool {
-	for _, isError := range c.errorsByArg(call) {
-		if isError {
-			return true
-		}
+	return slices.Contains(c.errorsByArg(call), true)
+}
+
+func exprToString(expr ast.Expr) string {
+	var sb strings.Builder
+	err := printer.Fprint(&sb, token.NewFileSet(), expr)
+	if err != nil {
+		panic(err)
 	}
+	return sb.String()
+}
+
+func areAssignableExprEqual(a, b ast.Expr) bool {
+	switch a := a.(type) {
+	case *ast.Ident:
+		b, ok := b.(*ast.Ident)
+		return ok && a.Name == b.Name
+	case *ast.BasicLit:
+		b, ok := b.(*ast.BasicLit)
+		return ok && a.Kind == b.Kind && a.Value == b.Value
+	case *ast.CompositeLit:
+		b, ok := b.(*ast.CompositeLit)
+		if !ok || len(a.Elts) != len(b.Elts) {
+			return false
+		}
+		if !areAssignableExprEqual(a.Type, b.Type) {
+			return false
+		}
+		for i := range a.Elts {
+			if !areAssignableExprEqual(a.Elts[i], b.Elts[i]) {
+				return false
+			}
+		}
+		return false
+	case *ast.UnaryExpr:
+		b, ok := b.(*ast.UnaryExpr)
+		return ok && a.Op == b.Op && areAssignableExprEqual(a.X, b.X)
+	case *ast.BinaryExpr:
+		b, ok := b.(*ast.BinaryExpr)
+		return ok && a.Op == b.Op && areAssignableExprEqual(a.X, b.X) && areAssignableExprEqual(a.Y, b.Y)
+	case *ast.CallExpr:
+		b, ok := b.(*ast.CallExpr)
+		if !ok || len(a.Args) != len(b.Args) {
+			return false
+		}
+		if !areAssignableExprEqual(a.Fun, b.Fun) {
+			return false
+		}
+		for i := range a.Args {
+			if !areAssignableExprEqual(a.Args[i], b.Args[i]) {
+				return false
+			}
+		}
+		return true
+	case *ast.ParenExpr:
+		b, ok := b.(*ast.ParenExpr)
+		return ok && areAssignableExprEqual(a.X, b.X)
+	case *ast.SelectorExpr:
+		b, ok := b.(*ast.SelectorExpr)
+		return ok && a.Sel.Name == b.Sel.Name && areAssignableExprEqual(a.X, b.X)
+	case *ast.IndexExpr:
+		b, ok := b.(*ast.IndexExpr)
+		return ok && areAssignableExprEqual(a.X, b.X) && areAssignableExprEqual(a.Index, b.Index)
+	case *ast.IndexListExpr:
+		b, ok := b.(*ast.IndexListExpr)
+		if !ok || len(a.Indices) != len(b.Indices) {
+			return false
+		}
+		if !areAssignableExprEqual(a.X, b.X) {
+			return false
+		}
+		for i := range a.Indices {
+			if !areAssignableExprEqual(a.Indices[i], b.Indices[i]) {
+				return false
+			}
+		}
+		return true
+	case *ast.SliceExpr:
+		b, ok := b.(*ast.SliceExpr)
+		return ok && a.Slice3 == b.Slice3 &&
+			areAssignableExprEqual(a.X, b.X) &&
+			areAssignableExprEqual(a.Low, b.Low) &&
+			areAssignableExprEqual(a.High, b.High) &&
+			areAssignableExprEqual(a.Max, b.Max)
+	case *ast.KeyValueExpr:
+		b, ok := b.(*ast.KeyValueExpr)
+		return ok && areAssignableExprEqual(a.Key, b.Key) && areAssignableExprEqual(a.Value, b.Value)
+	case *ast.TypeAssertExpr:
+		b, ok := b.(*ast.TypeAssertExpr)
+		return ok && areAssignableExprEqual(a.X, b.X) && areAssignableExprEqual(a.Type, b.Type)
+	case *ast.StarExpr:
+		b, ok := b.(*ast.StarExpr)
+		return ok && areAssignableExprEqual(a.X, b.X)
+	}
+
 	return false
 }
