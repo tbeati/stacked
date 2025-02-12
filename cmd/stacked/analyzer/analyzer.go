@@ -23,8 +23,11 @@ func NewAnalyzer(generatedPackages []string) *analysis.Analyzer {
 }
 
 type checker struct {
-	generatedPackages     []string
-	pass                  *analysis.Pass
+	generatedPackages []string
+	pass              *analysis.Pass
+
+	endOfFunctionCounter int
+
 	endOfStatementCounter int
 	toCheckIdent          ast.Expr
 	toCheckCall           *ast.CallExpr
@@ -38,98 +41,104 @@ func newChecker(generatedPackage []string, pass *analysis.Pass) *checker {
 	}
 }
 
+func (c *checker) reset() {
+	c.endOfFunctionCounter = -1
+	c.endOfStatementCounter = -1
+	c.toCheckIdent = nil
+	c.toCheckCall = nil
+}
+
+func (c *checker) isInFunction() bool {
+	return c.endOfFunctionCounter > -1
+}
+
+func (c *checker) updateFunctionState(node ast.Node) {
+	if c.endOfFunctionCounter == 0 {
+		c.endOfFunctionCounter = -1
+	} else if c.endOfFunctionCounter > -1 {
+		if node == nil {
+			c.endOfFunctionCounter--
+		} else {
+			c.endOfFunctionCounter++
+		}
+	}
+
+	if c.isInFunction() {
+		return
+	}
+
+	switch node.(type) {
+	case *ast.FuncDecl:
+		c.endOfFunctionCounter = 1
+	case *ast.FuncLit:
+		c.endOfFunctionCounter = 1
+	}
+}
+
 func (c *checker) check() {
 	for _, file := range c.pass.Files {
-		c.endOfStatementCounter = -1
-		c.toCheckIdent = nil
-		c.toCheckCall = nil
+		c.reset()
 
 		ast.Inspect(file, func(node ast.Node) bool {
+			c.updateFunctionState(node)
 			c.checkStmt(node)
 
-			switch stmt := node.(type) {
+			if !c.isInFunction() {
+				return true
+			}
+
+			switch node := node.(type) {
 			case *ast.AssignStmt:
-				c.handleAssignment(stmt)
+				c.checkAssignStmt(node)
 			case *ast.ReturnStmt:
-				for i := range stmt.Results {
-					call, ok := ast.Unparen(stmt.Results[i]).(*ast.CallExpr)
-					if !ok {
-						continue
-					}
-
-					if c.isInternalCall(call) {
-						continue
-					}
-
-					if c.isStackTraceWrap(call) {
-						continue
-					}
-
-					if c.returnsError(call) {
-						c.report(call)
-					}
+				for _, result := range node.Results {
+					c.reportShouldWrap(result)
 				}
 			case *ast.CompositeLit:
-				for i := range stmt.Elts {
-					switch elt := ast.Unparen(stmt.Elts[i]).(type) {
+				for i := range node.Elts {
+					switch elt := ast.Unparen(node.Elts[i]).(type) {
 					case *ast.KeyValueExpr:
-						call, ok := elt.Value.(*ast.CallExpr)
-						if !ok {
-							continue
-						}
+						c.reportShouldWrap(elt.Value)
+					default:
 
-						if c.isInternalCall(call) {
-							continue
-						}
-
-						if c.isStackTraceWrap(call) {
-							continue
-						}
-
-						if c.returnsError(call) {
-							c.report(call)
-						}
-					case *ast.CallExpr:
-						if c.isInternalCall(elt) {
-							continue
-						}
-
-						if c.isStackTraceWrap(elt) {
-							continue
-						}
-
-						if c.returnsError(elt) {
-							c.report(elt)
-						}
+						c.reportShouldWrap(elt)
 					}
 				}
 			case *ast.CallExpr:
-				if c.isStackTraceWrap(stmt) {
+				if c.isStackedWrap(node) {
 					break
 				}
 
-				for i := range stmt.Args {
-					call, ok := ast.Unparen(stmt.Args[i]).(*ast.CallExpr)
-					if !ok {
-						continue
-					}
-
-					if c.isInternalCall(call) {
-						continue
-					}
-
-					if c.isStackTraceWrap(call) {
-						continue
-					}
-
-					if c.returnsError(call) {
-						c.report(call)
-					}
+				for _, arg := range node.Args {
+					c.reportShouldWrap(arg)
 				}
 			}
 
 			return true
 		})
+	}
+}
+
+func (c *checker) shouldWrap(expr ast.Expr) bool {
+	call, ok := ast.Unparen(expr).(*ast.CallExpr)
+	if !ok {
+		return false
+	}
+
+	if c.isInternalCall(call) {
+		return false
+	}
+
+	if c.isStackedWrap(call) {
+		return false
+	}
+
+	return c.returnsError(call)
+}
+
+func (c *checker) reportShouldWrap(expr ast.Expr) {
+	if c.shouldWrap(expr) {
+		c.report(expr)
 	}
 }
 
@@ -167,12 +176,12 @@ func (c *checker) checkStmt(node ast.Node) {
 			return
 		}
 
-		if !c.isStackTraceWrap(call) {
+		if !c.isStackedWrap(call) {
 			c.report(toCheckCall)
 			return
 		}
 
-		if !areAssignableExprEqual(assignStmt.Lhs[0], toCheckIdent) {
+		if !areExprsEqual(assignStmt.Lhs[0], toCheckIdent) {
 			c.report(toCheckCall)
 			return
 		}
@@ -182,18 +191,21 @@ func (c *checker) checkStmt(node ast.Node) {
 			return
 		}
 
-		if !areAssignableExprEqual(call.Args[0], toCheckIdent) {
+		if !areExprsEqual(call.Args[0], toCheckIdent) {
 			c.report(toCheckCall)
 			return
 		}
 	}
 }
 
-func (c *checker) report(call *ast.CallExpr) {
-	c.pass.Reportf(call.Pos(), "error returned by %s is not wrapped with stacked", exprToString(call.Fun))
+func (c *checker) report(expr ast.Expr) {
+	switch expr := expr.(type) {
+	case *ast.CallExpr:
+		c.pass.Reportf(expr.Pos(), "error returned by %s is not wrapped with stacked", exprToString(expr.Fun))
+	}
 }
 
-func (c *checker) handleAssignment(stmt *ast.AssignStmt) {
+func (c *checker) checkAssignStmt(stmt *ast.AssignStmt) {
 	c.endOfStatementCounter = 1
 
 	if len(stmt.Lhs) == len(stmt.Rhs) {
@@ -207,7 +219,7 @@ func (c *checker) handleAssignment(stmt *ast.AssignStmt) {
 				continue
 			}
 
-			if c.isStackTraceWrap(call) {
+			if c.isStackedWrap(call) {
 				continue
 			}
 
@@ -233,7 +245,7 @@ func (c *checker) handleAssignment(stmt *ast.AssignStmt) {
 			return
 		}
 
-		if c.isStackTraceWrap(call) {
+		if c.isStackedWrap(call) {
 			return
 		}
 
@@ -258,7 +270,7 @@ func isError(t types.Type) bool {
 	return t.String() == "error"
 }
 
-func (c *checker) isStackTraceWrap(call *ast.CallExpr) bool {
+func (c *checker) isStackedWrap(call *ast.CallExpr) bool {
 	selector, ok := call.Fun.(*ast.SelectorExpr)
 	if !ok {
 		return false
@@ -330,90 +342,4 @@ func exprToString(expr ast.Expr) string {
 		panic(err)
 	}
 	return sb.String()
-}
-
-func areAssignableExprEqual(a, b ast.Expr) bool {
-	switch a := a.(type) {
-	case *ast.Ident:
-		b, ok := b.(*ast.Ident)
-		return ok && a.Name == b.Name
-	case *ast.BasicLit:
-		b, ok := b.(*ast.BasicLit)
-		return ok && a.Kind == b.Kind && a.Value == b.Value
-	case *ast.CompositeLit:
-		b, ok := b.(*ast.CompositeLit)
-		if !ok || len(a.Elts) != len(b.Elts) {
-			return false
-		}
-		if !areAssignableExprEqual(a.Type, b.Type) {
-			return false
-		}
-		for i := range a.Elts {
-			if !areAssignableExprEqual(a.Elts[i], b.Elts[i]) {
-				return false
-			}
-		}
-		return false
-	case *ast.UnaryExpr:
-		b, ok := b.(*ast.UnaryExpr)
-		return ok && a.Op == b.Op && areAssignableExprEqual(a.X, b.X)
-	case *ast.BinaryExpr:
-		b, ok := b.(*ast.BinaryExpr)
-		return ok && a.Op == b.Op && areAssignableExprEqual(a.X, b.X) && areAssignableExprEqual(a.Y, b.Y)
-	case *ast.CallExpr:
-		b, ok := b.(*ast.CallExpr)
-		if !ok || len(a.Args) != len(b.Args) {
-			return false
-		}
-		if !areAssignableExprEqual(a.Fun, b.Fun) {
-			return false
-		}
-		for i := range a.Args {
-			if !areAssignableExprEqual(a.Args[i], b.Args[i]) {
-				return false
-			}
-		}
-		return true
-	case *ast.ParenExpr:
-		b, ok := b.(*ast.ParenExpr)
-		return ok && areAssignableExprEqual(a.X, b.X)
-	case *ast.SelectorExpr:
-		b, ok := b.(*ast.SelectorExpr)
-		return ok && a.Sel.Name == b.Sel.Name && areAssignableExprEqual(a.X, b.X)
-	case *ast.IndexExpr:
-		b, ok := b.(*ast.IndexExpr)
-		return ok && areAssignableExprEqual(a.X, b.X) && areAssignableExprEqual(a.Index, b.Index)
-	case *ast.IndexListExpr:
-		b, ok := b.(*ast.IndexListExpr)
-		if !ok || len(a.Indices) != len(b.Indices) {
-			return false
-		}
-		if !areAssignableExprEqual(a.X, b.X) {
-			return false
-		}
-		for i := range a.Indices {
-			if !areAssignableExprEqual(a.Indices[i], b.Indices[i]) {
-				return false
-			}
-		}
-		return true
-	case *ast.SliceExpr:
-		b, ok := b.(*ast.SliceExpr)
-		return ok && a.Slice3 == b.Slice3 &&
-			areAssignableExprEqual(a.X, b.X) &&
-			areAssignableExprEqual(a.Low, b.Low) &&
-			areAssignableExprEqual(a.High, b.High) &&
-			areAssignableExprEqual(a.Max, b.Max)
-	case *ast.KeyValueExpr:
-		b, ok := b.(*ast.KeyValueExpr)
-		return ok && areAssignableExprEqual(a.Key, b.Key) && areAssignableExprEqual(a.Value, b.Value)
-	case *ast.TypeAssertExpr:
-		b, ok := b.(*ast.TypeAssertExpr)
-		return ok && areAssignableExprEqual(a.X, b.X) && areAssignableExprEqual(a.Type, b.Type)
-	case *ast.StarExpr:
-		b, ok := b.(*ast.StarExpr)
-		return ok && areAssignableExprEqual(a.X, b.X)
-	}
-
-	return false
 }
