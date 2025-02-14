@@ -1,6 +1,6 @@
 module github.com/beati/stacked
 
-go 1.23.4
+go 1.24.0
 
 require golang.org/x/tools v0.29.0
 

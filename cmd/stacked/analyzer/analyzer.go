@@ -11,6 +11,12 @@ import (
 	"golang.org/x/tools/go/analysis"
 )
 
+var errorType *types.Interface
+
+func init() {
+	errorType = types.Universe.Lookup("error").Type().Underlying().(*types.Interface)
+}
+
 func NewAnalyzer(generatedPackages []string) *analysis.Analyzer {
 	return &analysis.Analyzer{
 		Name: "stacked",
@@ -29,8 +35,8 @@ type checker struct {
 	endOfFunctionCounter int
 
 	endOfStatementCounter int
-	toCheckIdent          ast.Expr
-	toCheckCall           *ast.CallExpr
+	assignedError         ast.Expr
+	toCheckExpr           ast.Expr
 }
 
 func newChecker(generatedPackage []string, pass *analysis.Pass) *checker {
@@ -44,8 +50,8 @@ func newChecker(generatedPackage []string, pass *analysis.Pass) *checker {
 func (c *checker) reset() {
 	c.endOfFunctionCounter = -1
 	c.endOfStatementCounter = -1
-	c.toCheckIdent = nil
-	c.toCheckCall = nil
+	c.assignedError = nil
+	c.toCheckExpr = nil
 }
 
 func (c *checker) isInFunction() bool {
@@ -120,11 +126,49 @@ func (c *checker) check() {
 }
 
 func (c *checker) shouldWrap(expr ast.Expr) bool {
-	call, ok := ast.Unparen(expr).(*ast.CallExpr)
+	expr = ast.Unparen(expr)
+
+	switch expr := expr.(type) {
+	case *ast.Ident:
+		return c.shouldWrapIdent(expr)
+	case *ast.SelectorExpr:
+		return c.shouldWrapSelector(expr)
+	case *ast.CompositeLit:
+		return c.shouldWrapCompositeLit(expr)
+	case *ast.CallExpr:
+		return c.shouldWrapCall(expr)
+	}
+
+	return false
+}
+
+func (c *checker) shouldWrapCompositeLit(lit *ast.CompositeLit) bool {
+	return isError(c.pass.TypesInfo.TypeOf(lit))
+}
+
+func (c *checker) shouldWrapIdent(ident *ast.Ident) bool {
+	obj := c.pass.TypesInfo.Uses[ident]
+
+	variable, ok := obj.(*types.Var)
 	if !ok {
 		return false
 	}
 
+	return variable.Pkg() != nil && variable.Parent() == variable.Pkg().Scope() && isError(variable.Type())
+}
+
+func (c *checker) shouldWrapSelector(expr *ast.SelectorExpr) bool {
+	obj := c.pass.TypesInfo.Uses[expr.Sel]
+
+	variable, ok := obj.(*types.Var)
+	if !ok {
+		return false
+	}
+
+	return variable.Pkg() != nil && variable.Parent() == variable.Pkg().Scope() && isError(variable.Type())
+}
+
+func (c *checker) shouldWrapCall(call *ast.CallExpr) bool {
 	if c.isInternalCall(call) {
 		return false
 	}
@@ -153,11 +197,11 @@ func (c *checker) checkStmt(node ast.Node) {
 		}
 	}
 
-	if c.toCheckIdent != nil && c.endOfStatementCounter == -1 {
-		toCheckIdent := c.toCheckIdent
-		toCheckCall := c.toCheckCall
-		c.toCheckIdent = nil
-		c.toCheckCall = nil
+	if c.assignedError != nil && c.endOfStatementCounter == -1 {
+		assignedError := c.assignedError
+		toCheckCall := c.toCheckExpr
+		c.assignedError = nil
+		c.toCheckExpr = nil
 
 		assignStmt, ok := node.(*ast.AssignStmt)
 		if !ok {
@@ -181,7 +225,7 @@ func (c *checker) checkStmt(node ast.Node) {
 			return
 		}
 
-		if !areExprsEqual(assignStmt.Lhs[0], toCheckIdent) {
+		if !areExprsEqual(assignStmt.Lhs[0], assignedError) {
 			c.report(toCheckCall)
 			return
 		}
@@ -191,7 +235,7 @@ func (c *checker) checkStmt(node ast.Node) {
 			return
 		}
 
-		if !areExprsEqual(call.Args[0], toCheckIdent) {
+		if !areExprsEqual(call.Args[0], assignedError) {
 			c.report(toCheckCall)
 			return
 		}
@@ -200,6 +244,12 @@ func (c *checker) checkStmt(node ast.Node) {
 
 func (c *checker) report(expr ast.Expr) {
 	switch expr := expr.(type) {
+	case *ast.Ident:
+		c.pass.Reportf(expr.Pos(), "%s is not wrapped with stacked", exprToString(expr))
+	case *ast.SelectorExpr:
+		c.pass.Reportf(expr.Pos(), "%s is not wrapped with stacked", exprToString(expr))
+	case *ast.CompositeLit:
+		c.pass.Reportf(expr.Pos(), "%s literal is not wrapped with stacked", exprToString(expr.Type))
 	case *ast.CallExpr:
 		c.pass.Reportf(expr.Pos(), "error returned by %s is not wrapped with stacked", exprToString(expr.Fun))
 	}
@@ -208,31 +258,25 @@ func (c *checker) report(expr ast.Expr) {
 func (c *checker) checkAssignStmt(stmt *ast.AssignStmt) {
 	c.endOfStatementCounter = 1
 
+	errCount := 0
+	for _, expr := range stmt.Lhs {
+		exprType := c.pass.TypesInfo.TypeOf(expr)
+		if exprType != nil && isError(exprType) {
+			errCount++
+		}
+
+		if errCount > 1 {
+			c.pass.Reportf(stmt.Pos(), "multiple errors")
+			return
+		}
+	}
+
 	if len(stmt.Lhs) == len(stmt.Rhs) {
 		for i := range stmt.Lhs {
-			call, ok := ast.Unparen(stmt.Rhs[i]).(*ast.CallExpr)
-			if !ok {
-				continue
-			}
-
-			if c.isInternalCall(call) {
-				continue
-			}
-
-			if c.isStackedWrap(call) {
-				continue
-			}
-
-			if c.returnsError(call) {
-				if c.toCheckIdent != nil {
-					c.pass.Reportf(stmt.Pos(), "multiple errors")
-					c.toCheckIdent = nil
-					c.toCheckCall = nil
-					return
-				}
-
-				c.toCheckIdent = ast.Unparen(stmt.Lhs[i])
-				c.toCheckCall = call
+			if c.shouldWrap(stmt.Rhs[i]) {
+				c.assignedError = ast.Unparen(stmt.Lhs[i])
+				c.toCheckExpr = ast.Unparen(stmt.Rhs[i])
+				return
 			}
 		}
 	} else {
@@ -252,22 +296,16 @@ func (c *checker) checkAssignStmt(stmt *ast.AssignStmt) {
 		errors := c.errorsByArg(call)
 		for i := range stmt.Lhs {
 			if errors[i] {
-				if c.toCheckIdent != nil {
-					c.pass.Reportf(stmt.Pos(), "multiple errors")
-					c.toCheckIdent = nil
-					c.toCheckCall = nil
-					return
-				}
-
-				c.toCheckIdent = ast.Unparen(stmt.Lhs[i])
-				c.toCheckCall = call
+				c.assignedError = ast.Unparen(stmt.Lhs[i])
+				c.toCheckExpr = call
+				return
 			}
 		}
 	}
 }
 
 func isError(t types.Type) bool {
-	return t.String() == "error"
+	return types.Implements(t, errorType)
 }
 
 func (c *checker) isStackedWrap(call *ast.CallExpr) bool {
