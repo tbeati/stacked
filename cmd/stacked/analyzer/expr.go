@@ -1,6 +1,11 @@
 package analyzer
 
-import "go/ast"
+import (
+	"go/ast"
+	"go/printer"
+	"go/token"
+	"strings"
+)
 
 func areExprsEqual(a, b ast.Expr) bool {
 	switch a := a.(type) {
@@ -86,4 +91,13 @@ func areExprsEqual(a, b ast.Expr) bool {
 	}
 
 	return false
+}
+
+func exprToString(expr ast.Expr) string {
+	var s strings.Builder
+	err := printer.Fprint(&s, token.NewFileSet(), expr)
+	if err != nil {
+		panic(err)
+	}
+	return s.String()
 }

@@ -2,7 +2,6 @@ package analyzer
 
 import (
 	"go/ast"
-	"go/printer"
 	"go/token"
 	"go/types"
 	"slices"
@@ -11,242 +10,113 @@ import (
 	"golang.org/x/tools/go/analysis"
 )
 
-var errorType *types.Interface
-
-func init() {
-	errorType = types.Universe.Lookup("error").Type().Underlying().(*types.Interface)
-}
-
 func NewAnalyzer(generatedPackages []string) *analysis.Analyzer {
 	return &analysis.Analyzer{
 		Name: "stacked",
 		Doc:  "check for error not wrapped with stacked",
 		Run: func(pass *analysis.Pass) (interface{}, error) {
-			newChecker(generatedPackages, pass).check()
+			for _, file := range pass.Files {
+				newFileChecker(generatedPackages, pass, file).check()
+			}
 			return nil, nil
 		},
 	}
 }
 
-type checker struct {
+type fileChecker struct {
 	generatedPackages []string
 	pass              *analysis.Pass
+	file              *ast.File
 
-	endOfFunctionCounter int
-
-	endOfStatementCounter int
-	assignedError         ast.Expr
-	toCheckExpr           ast.Expr
+	functionTracker   nodeTracker
+	assignmentTracker nodeTracker
+	assignedErrorDst  ast.Expr
+	assignedErrorSrc  ast.Expr
 }
 
-func newChecker(generatedPackage []string, pass *analysis.Pass) *checker {
-	return &checker{
-		generatedPackages:     generatedPackage,
-		pass:                  pass,
-		endOfStatementCounter: -1,
+func newFileChecker(generatedPackage []string, pass *analysis.Pass, file *ast.File) *fileChecker {
+	return &fileChecker{
+		generatedPackages: generatedPackage,
+		pass:              pass,
+		file:              file,
+		functionTracker:   newNodeTracker(),
+		assignmentTracker: newNodeTracker(),
 	}
 }
 
-func (c *checker) reset() {
-	c.endOfFunctionCounter = -1
-	c.endOfStatementCounter = -1
-	c.assignedError = nil
-	c.toCheckExpr = nil
-}
+func (c *fileChecker) check() {
+	ast.Inspect(c.file, func(node ast.Node) bool {
+		c.functionTracker.step(node)
+		c.assignmentTracker.step(node)
+		c.trackTopLevelFunctionDeclaration(node)
 
-func (c *checker) isInFunction() bool {
-	return c.endOfFunctionCounter > -1
-}
+		c.checkAssignmentWrapping(node)
 
-func (c *checker) updateFunctionState(node ast.Node) {
-	if c.endOfFunctionCounter == 0 {
-		c.endOfFunctionCounter = -1
-	} else if c.endOfFunctionCounter > -1 {
-		if node == nil {
-			c.endOfFunctionCounter--
-		} else {
-			c.endOfFunctionCounter++
+		if !c.isInFunction() {
+			return true
 		}
-	}
 
+		switch node := node.(type) {
+		case *ast.DeclStmt:
+			c.assignmentTracker.enter()
+		case *ast.GenDecl:
+			c.checkGenDecl(node)
+		case *ast.AssignStmt:
+			c.assignmentTracker.enter()
+			c.checkAssignStmt(node)
+		case *ast.ReturnStmt:
+			for _, result := range node.Results {
+				if c.shouldWrap(result) {
+					c.report(result)
+				}
+			}
+		case *ast.CompositeLit:
+			for _, elt := range node.Elts {
+				switch elt := ast.Unparen(elt).(type) {
+				case *ast.KeyValueExpr:
+					if c.shouldWrap(elt.Value) {
+						c.report(elt.Value)
+					}
+				default:
+					if c.shouldWrap(elt) {
+						c.report(elt)
+					}
+				}
+			}
+		case *ast.CallExpr:
+			if c.isWrapCall(node) {
+				return true
+			}
+
+			for _, arg := range node.Args {
+				if c.shouldWrap(arg) {
+					c.report(arg)
+				}
+			}
+		}
+
+		return true
+	})
+}
+
+func (c *fileChecker) isInFunction() bool {
+	return c.functionTracker.isIn()
+}
+
+func (c *fileChecker) trackTopLevelFunctionDeclaration(node ast.Node) {
 	if c.isInFunction() {
 		return
 	}
 
 	switch node.(type) {
 	case *ast.FuncDecl:
-		c.endOfFunctionCounter = 1
+		c.functionTracker.enter()
 	case *ast.FuncLit:
-		c.endOfFunctionCounter = 1
+		c.functionTracker.enter()
 	}
 }
 
-func (c *checker) check() {
-	for _, file := range c.pass.Files {
-		c.reset()
-
-		ast.Inspect(file, func(node ast.Node) bool {
-			c.updateFunctionState(node)
-			c.checkStmt(node)
-
-			if !c.isInFunction() {
-				return true
-			}
-
-			switch node := node.(type) {
-			case *ast.DeclStmt:
-				c.endOfStatementCounter = 1
-			case *ast.GenDecl:
-				c.checkGenDecl(node)
-			case *ast.AssignStmt:
-				c.checkAssignStmt(node)
-			case *ast.ReturnStmt:
-				for _, result := range node.Results {
-					c.reportShouldWrap(result)
-				}
-			case *ast.CompositeLit:
-				for i := range node.Elts {
-					switch elt := ast.Unparen(node.Elts[i]).(type) {
-					case *ast.KeyValueExpr:
-						c.reportShouldWrap(elt.Value)
-					default:
-
-						c.reportShouldWrap(elt)
-					}
-				}
-			case *ast.CallExpr:
-				if c.isStackedWrap(node) {
-					return true
-				}
-
-				for _, arg := range node.Args {
-					c.reportShouldWrap(arg)
-				}
-			}
-
-			return true
-		})
-	}
-}
-
-func (c *checker) shouldWrap(expr ast.Expr) bool {
-	expr = ast.Unparen(expr)
-
-	switch expr := expr.(type) {
-	case *ast.Ident:
-		return c.shouldWrapIdent(expr)
-	case *ast.SelectorExpr:
-		return c.shouldWrapSelector(expr)
-	case *ast.CompositeLit:
-		return c.shouldWrapCompositeLit(expr)
-	case *ast.CallExpr:
-		return c.shouldWrapCall(expr)
-	}
-
-	return false
-}
-
-func (c *checker) shouldWrapCompositeLit(lit *ast.CompositeLit) bool {
-	return isError(c.pass.TypesInfo.TypeOf(lit))
-}
-
-func (c *checker) shouldWrapIdent(ident *ast.Ident) bool {
-	obj := c.pass.TypesInfo.Uses[ident]
-
-	variable, ok := obj.(*types.Var)
-	if !ok {
-		return false
-	}
-
-	return variable.Pkg() != nil && variable.Parent() == variable.Pkg().Scope() && isError(variable.Type())
-}
-
-func (c *checker) shouldWrapSelector(expr *ast.SelectorExpr) bool {
-	obj := c.pass.TypesInfo.Uses[expr.Sel]
-
-	variable, ok := obj.(*types.Var)
-	if !ok {
-		return false
-	}
-
-	return variable.Pkg() != nil && variable.Parent() == variable.Pkg().Scope() && isError(variable.Type())
-}
-
-func (c *checker) shouldWrapCall(call *ast.CallExpr) bool {
-	if c.isInternalCall(call) {
-		return false
-	}
-
-	if c.isStackedWrap(call) {
-		return false
-	}
-
-	return c.returnsError(call)
-}
-
-func (c *checker) reportShouldWrap(expr ast.Expr) {
-	if c.shouldWrap(expr) {
-		c.report(expr)
-	}
-}
-
-func (c *checker) checkStmt(node ast.Node) {
-	if c.endOfStatementCounter == 0 {
-		c.endOfStatementCounter = -1
-	} else if c.endOfStatementCounter > -1 {
-		if node == nil {
-			c.endOfStatementCounter--
-		} else {
-			c.endOfStatementCounter++
-		}
-	}
-
-	if c.assignedError != nil && c.endOfStatementCounter == -1 {
-		assignedError := c.assignedError
-		toCheckCall := c.toCheckExpr
-		c.assignedError = nil
-		c.toCheckExpr = nil
-
-		assignStmt, ok := node.(*ast.AssignStmt)
-		if !ok {
-			c.report(toCheckCall)
-			return
-		}
-
-		if len(assignStmt.Lhs) != 1 || len(assignStmt.Rhs) != 1 {
-			c.report(toCheckCall)
-			return
-		}
-
-		call, ok := assignStmt.Rhs[0].(*ast.CallExpr)
-		if !ok {
-			c.report(toCheckCall)
-			return
-		}
-
-		if !c.isStackedWrap(call) {
-			c.report(toCheckCall)
-			return
-		}
-
-		if !areExprsEqual(assignStmt.Lhs[0], assignedError) {
-			c.report(toCheckCall)
-			return
-		}
-
-		if len(call.Args) != 1 {
-			c.report(toCheckCall)
-			return
-		}
-
-		if !areExprsEqual(call.Args[0], assignedError) {
-			c.report(toCheckCall)
-			return
-		}
-	}
-}
-
-func (c *checker) report(expr ast.Expr) {
+func (c *fileChecker) report(expr ast.Expr) {
 	switch expr := expr.(type) {
 	case *ast.Ident:
 		c.pass.Reportf(expr.Pos(), "%s is not wrapped with stacked", exprToString(expr))
@@ -263,7 +133,62 @@ func (c *checker) report(expr ast.Expr) {
 	}
 }
 
-func (c *checker) checkGenDecl(stmt *ast.GenDecl) {
+func (c *fileChecker) shouldWrap(expr ast.Expr) bool {
+	expr = ast.Unparen(expr)
+
+	switch expr := expr.(type) {
+	case *ast.Ident:
+		return c.shouldWrapIdent(expr)
+	case *ast.SelectorExpr:
+		return c.shouldWrapSelector(expr)
+	case *ast.CompositeLit:
+		return c.shouldWrapCompositeLit(expr)
+	case *ast.CallExpr:
+		return c.shouldWrapCall(expr)
+	}
+
+	return false
+}
+
+func (c *fileChecker) shouldWrapIdent(ident *ast.Ident) bool {
+	obj := c.pass.TypesInfo.Uses[ident]
+
+	variable, ok := obj.(*types.Var)
+	if !ok {
+		return false
+	}
+
+	return variable.Pkg() != nil && variable.Parent() == variable.Pkg().Scope() && isError(variable.Type())
+}
+
+func (c *fileChecker) shouldWrapSelector(expr *ast.SelectorExpr) bool {
+	obj := c.pass.TypesInfo.Uses[expr.Sel]
+
+	variable, ok := obj.(*types.Var)
+	if !ok {
+		return false
+	}
+
+	return variable.Pkg() != nil && variable.Parent() == variable.Pkg().Scope() && isError(variable.Type())
+}
+
+func (c *fileChecker) shouldWrapCompositeLit(lit *ast.CompositeLit) bool {
+	return isError(c.pass.TypesInfo.TypeOf(lit))
+}
+
+func (c *fileChecker) shouldWrapCall(call *ast.CallExpr) bool {
+	if c.isInternalCall(call) {
+		return false
+	}
+
+	if c.isWrapCall(call) {
+		return false
+	}
+
+	return c.returnsError(call)
+}
+
+func (c *fileChecker) checkGenDecl(stmt *ast.GenDecl) {
 	if stmt.Tok != token.VAR {
 		return
 	}
@@ -299,12 +224,10 @@ func (c *checker) checkGenDecl(stmt *ast.GenDecl) {
 		lsh = append(lsh, ident)
 	}
 
-	c.walkAssign(lsh, errorSpec.Values)
+	c.checkAssignment(lsh, errorSpec.Values)
 }
 
-func (c *checker) checkAssignStmt(stmt *ast.AssignStmt) {
-	c.endOfStatementCounter = 1
-
+func (c *fileChecker) checkAssignStmt(stmt *ast.AssignStmt) {
 	errCount := 0
 	for _, expr := range stmt.Lhs {
 		exprType := c.pass.TypesInfo.TypeOf(expr)
@@ -317,15 +240,15 @@ func (c *checker) checkAssignStmt(stmt *ast.AssignStmt) {
 		}
 	}
 
-	c.walkAssign(stmt.Lhs, stmt.Rhs)
+	c.checkAssignment(stmt.Lhs, stmt.Rhs)
 }
 
-func (c *checker) walkAssign(lsh, rsh []ast.Expr) {
+func (c *fileChecker) checkAssignment(lsh, rsh []ast.Expr) {
 	if len(lsh) == len(rsh) {
 		for i := range lsh {
 			if c.shouldWrap(rsh[i]) {
-				c.assignedError = ast.Unparen(lsh[i])
-				c.toCheckExpr = ast.Unparen(rsh[i])
+				c.assignedErrorDst = ast.Unparen(lsh[i])
+				c.assignedErrorSrc = ast.Unparen(rsh[i])
 				return
 			}
 		}
@@ -335,30 +258,62 @@ func (c *checker) walkAssign(lsh, rsh []ast.Expr) {
 			return
 		}
 
-		if c.isInternalCall(call) {
+		if !c.shouldWrapCall(call) {
 			return
 		}
 
-		if c.isStackedWrap(call) {
+		c.assignedErrorDst = ast.Unparen(lsh[c.errorReturnIndex(call)])
+		c.assignedErrorSrc = call
+	}
+}
+
+func (c *fileChecker) checkAssignmentWrapping(node ast.Node) {
+	if c.assignedErrorDst != nil && !c.assignmentTracker.isIn() {
+		assignedErrorDst := c.assignedErrorDst
+		assignedErrorSrc := c.assignedErrorSrc
+		c.assignedErrorDst = nil
+		c.assignedErrorSrc = nil
+
+		assignStmt, ok := node.(*ast.AssignStmt)
+		if !ok {
+			c.report(assignedErrorSrc)
 			return
 		}
 
-		errors := c.errorsByArg(call)
-		for i := range lsh {
-			if errors[i] {
-				c.assignedError = ast.Unparen(lsh[i])
-				c.toCheckExpr = call
-				return
-			}
+		if len(assignStmt.Lhs) != 1 || len(assignStmt.Rhs) != 1 {
+			c.report(assignedErrorSrc)
+			return
+		}
+
+		call, ok := assignStmt.Rhs[0].(*ast.CallExpr)
+		if !ok {
+			c.report(assignedErrorSrc)
+			return
+		}
+
+		if !c.isWrapCall(call) {
+			c.report(assignedErrorSrc)
+			return
+		}
+
+		if !areExprsEqual(assignStmt.Lhs[0], assignedErrorDst) {
+			c.report(assignedErrorSrc)
+			return
+		}
+
+		if len(call.Args) != 1 {
+			c.report(assignedErrorSrc)
+			return
+		}
+
+		if !areExprsEqual(call.Args[0], assignedErrorDst) {
+			c.report(assignedErrorSrc)
+			return
 		}
 	}
 }
 
-func isError(t types.Type) bool {
-	return types.Implements(t, errorType)
-}
-
-func (c *checker) isStackedWrap(call *ast.CallExpr) bool {
+func (c *fileChecker) isWrapCall(call *ast.CallExpr) bool {
 	selector, ok := call.Fun.(*ast.SelectorExpr)
 	if !ok {
 		return false
@@ -383,7 +338,7 @@ func (c *checker) isStackedWrap(call *ast.CallExpr) bool {
 	return pkg.Imported().Path() == "github.com/beati/stacked"
 }
 
-func (c *checker) isInternalCall(call *ast.CallExpr) bool {
+func (c *fileChecker) isInternalCall(call *ast.CallExpr) bool {
 	if c.isTypeConversion(call) {
 		return false
 	}
@@ -402,7 +357,7 @@ func (c *checker) isInternalCall(call *ast.CallExpr) bool {
 	return strings.HasPrefix(pkg, c.pass.Module.Path)
 }
 
-func (c *checker) isTypeConversion(call *ast.CallExpr) bool {
+func (c *fileChecker) isTypeConversion(call *ast.CallExpr) bool {
 	var obj types.Object
 
 	switch fun := call.Fun.(type) {
@@ -420,36 +375,24 @@ func (c *checker) isTypeConversion(call *ast.CallExpr) bool {
 	return isTypeName
 }
 
-func (c *checker) errorsByArg(call *ast.CallExpr) []bool {
-	switch t := c.pass.TypesInfo.Types[call].Type.(type) {
+func (c *fileChecker) errorReturnIndex(call *ast.CallExpr) int {
+	switch returnType := c.pass.TypesInfo.TypeOf(call).(type) {
 	case *types.Named:
-		return []bool{isError(t)}
+		if isError(returnType) {
+			return 0
+		}
 	case *types.Tuple:
-		s := make([]bool, t.Len())
-		for i := 0; i < t.Len(); i++ {
-			switch et := t.At(i).Type().(type) {
-			case *types.Named:
-				s[i] = isError(et)
-			default:
-				s[i] = false
+		for i := range returnType.Len() {
+			t, ok := returnType.At(i).Type().(*types.Named)
+			if ok && isError(t) {
+				return i
 			}
 		}
-
-		return s
 	}
 
-	return []bool{false}
+	return -1
 }
 
-func (c *checker) returnsError(call *ast.CallExpr) bool {
-	return slices.Contains(c.errorsByArg(call), true)
-}
-
-func exprToString(expr ast.Expr) string {
-	var sb strings.Builder
-	err := printer.Fprint(&sb, token.NewFileSet(), expr)
-	if err != nil {
-		panic(err)
-	}
-	return sb.String()
+func (c *fileChecker) returnsError(call *ast.CallExpr) bool {
+	return c.errorReturnIndex(call) >= 0
 }
