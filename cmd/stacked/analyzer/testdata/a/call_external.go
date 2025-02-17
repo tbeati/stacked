@@ -16,7 +16,7 @@ func callExternalPackage() error {
 	var name string
 	var err2 error
 
-	var err3 = os.Chdir("/")
+	var err3 = os.Chdir("/") // want "error returned by os.Chdir is not wrapped with stacked"
 	if err3 != nil {
 		return err3
 	}

@@ -94,6 +94,10 @@ func (c *checker) check() {
 			}
 
 			switch node := node.(type) {
+			case *ast.DeclStmt:
+				c.endOfStatementCounter = 1
+			case *ast.GenDecl:
+				c.checkGenDecl(node)
 			case *ast.AssignStmt:
 				c.checkAssignStmt(node)
 			case *ast.ReturnStmt:
@@ -112,7 +116,7 @@ func (c *checker) check() {
 				}
 			case *ast.CallExpr:
 				if c.isStackedWrap(node) {
-					break
+					return true
 				}
 
 				for _, arg := range node.Args {
@@ -251,8 +255,51 @@ func (c *checker) report(expr ast.Expr) {
 	case *ast.CompositeLit:
 		c.pass.Reportf(expr.Pos(), "%s literal is not wrapped with stacked", exprToString(expr.Type))
 	case *ast.CallExpr:
-		c.pass.Reportf(expr.Pos(), "error returned by %s is not wrapped with stacked", exprToString(expr.Fun))
+		if c.isTypeConversion(expr) {
+			c.pass.Reportf(expr.Pos(), "value converted to error type %s is not wrapped with stacked", exprToString(expr.Fun))
+		} else {
+			c.pass.Reportf(expr.Pos(), "error returned by %s is not wrapped with stacked", exprToString(expr.Fun))
+		}
 	}
+}
+
+func (c *checker) checkGenDecl(stmt *ast.GenDecl) {
+	if stmt.Tok != token.VAR {
+		return
+	}
+
+	var errorSpec *ast.ValueSpec
+
+	errCount := 0
+	for _, spec := range stmt.Specs {
+		valueSpec, ok := spec.(*ast.ValueSpec)
+		if !ok {
+			continue
+		}
+
+		for _, name := range valueSpec.Names {
+			if isError(c.pass.TypesInfo.TypeOf(name)) {
+				errCount++
+				if errCount > 1 {
+					c.pass.Reportf(stmt.Pos(), "multiple errors")
+					return
+				}
+
+				errorSpec = valueSpec
+			}
+		}
+	}
+
+	if errorSpec == nil || len(errorSpec.Values) == 0 {
+		return
+	}
+
+	lsh := make([]ast.Expr, 0, len(errorSpec.Names))
+	for _, ident := range errorSpec.Names {
+		lsh = append(lsh, ident)
+	}
+
+	c.walkAssign(lsh, errorSpec.Values)
 }
 
 func (c *checker) checkAssignStmt(stmt *ast.AssignStmt) {
@@ -263,24 +310,27 @@ func (c *checker) checkAssignStmt(stmt *ast.AssignStmt) {
 		exprType := c.pass.TypesInfo.TypeOf(expr)
 		if exprType != nil && isError(exprType) {
 			errCount++
-		}
-
-		if errCount > 1 {
-			c.pass.Reportf(stmt.Pos(), "multiple errors")
-			return
+			if errCount > 1 {
+				c.pass.Reportf(stmt.Pos(), "multiple errors")
+				return
+			}
 		}
 	}
 
-	if len(stmt.Lhs) == len(stmt.Rhs) {
-		for i := range stmt.Lhs {
-			if c.shouldWrap(stmt.Rhs[i]) {
-				c.assignedError = ast.Unparen(stmt.Lhs[i])
-				c.toCheckExpr = ast.Unparen(stmt.Rhs[i])
+	c.walkAssign(stmt.Lhs, stmt.Rhs)
+}
+
+func (c *checker) walkAssign(lsh, rsh []ast.Expr) {
+	if len(lsh) == len(rsh) {
+		for i := range lsh {
+			if c.shouldWrap(rsh[i]) {
+				c.assignedError = ast.Unparen(lsh[i])
+				c.toCheckExpr = ast.Unparen(rsh[i])
 				return
 			}
 		}
 	} else {
-		call, ok := ast.Unparen(stmt.Rhs[0]).(*ast.CallExpr)
+		call, ok := ast.Unparen(rsh[0]).(*ast.CallExpr)
 		if !ok {
 			return
 		}
@@ -294,9 +344,9 @@ func (c *checker) checkAssignStmt(stmt *ast.AssignStmt) {
 		}
 
 		errors := c.errorsByArg(call)
-		for i := range stmt.Lhs {
+		for i := range lsh {
 			if errors[i] {
-				c.assignedError = ast.Unparen(stmt.Lhs[i])
+				c.assignedError = ast.Unparen(lsh[i])
 				c.toCheckExpr = call
 				return
 			}
@@ -334,6 +384,10 @@ func (c *checker) isStackedWrap(call *ast.CallExpr) bool {
 }
 
 func (c *checker) isInternalCall(call *ast.CallExpr) bool {
+	if c.isTypeConversion(call) {
+		return false
+	}
+
 	selector, ok := call.Fun.(*ast.SelectorExpr)
 	if !ok {
 		return true
@@ -346,6 +400,24 @@ func (c *checker) isInternalCall(call *ast.CallExpr) bool {
 	}
 
 	return strings.HasPrefix(pkg, c.pass.Module.Path)
+}
+
+func (c *checker) isTypeConversion(call *ast.CallExpr) bool {
+	var obj types.Object
+
+	switch fun := call.Fun.(type) {
+	case *ast.Ident:
+		obj = c.pass.TypesInfo.Uses[fun]
+	case *ast.SelectorExpr:
+		obj = c.pass.TypesInfo.Uses[fun.Sel]
+	}
+
+	if obj == nil {
+		return false
+	}
+
+	_, isTypeName := obj.(*types.TypeName)
+	return isTypeName
 }
 
 func (c *checker) errorsByArg(call *ast.CallExpr) []bool {

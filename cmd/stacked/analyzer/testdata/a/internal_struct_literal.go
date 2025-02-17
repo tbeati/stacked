@@ -25,6 +25,23 @@ func structLiteralAssignmentInternal() {
 }
 
 func structLiteralDeclarationInternal() {
+	/*
+		{
+			var x, y = os.Open("")
+			_, _ = x, y
+
+			var (
+				a, b     = os.Open("")
+				c, d     = 2, ""
+				e, f int = 2, 4
+			)
+
+			_, _ = a, b
+			_, _ = c, d
+			_, _ = e, f
+		}
+	*/
+
 	{
 		var err = b.StructError{Message: "error"} // want "b.StructError literal is not wrapped with stacked"
 		_ = err
@@ -46,13 +63,8 @@ func structLiteralDeclarationInternal() {
 	}
 
 	{
-		var err = error(b.StructError{Message: "error"}) // want "b.StructError literal is not wrapped with stacked"
+		var err = error(b.StructError{Message: "error"}) // want "b.StructError literal is not wrapped with stacked" "value converted to error type error is not wrapped with stacked"
 		_ = err
-	}
-
-	{
-		var err = error(b.StructError{Message: "error"})
-		err = stacked.Wrap(err)
 	}
 
 	{
@@ -66,13 +78,8 @@ func structLiteralDeclarationInternal() {
 	}
 
 	{
-		var _, err = 0, error(b.StructError{Message: "error"}) // want "b.StructError literal is not wrapped with stacked"
+		var _, err = 0, error(b.StructError{Message: "error"}) // want "b.StructError literal is not wrapped with stacked" "value converted to error type error is not wrapped with stacked"
 		_ = err
-	}
-
-	{
-		var _, err = 0, error(b.StructError{Message: "error"})
-		err = stacked.Wrap(err)
 	}
 }
 
@@ -88,13 +95,8 @@ func structLiteralShortDeclarationInternal() {
 	}
 
 	{
-		err := error(b.StructError{Message: "error"}) // want "b.StructError literal is not wrapped with stacked"
+		err := error(b.StructError{Message: "error"}) // want "b.StructError literal is not wrapped with stacked" "value converted to error type error is not wrapped with stacked"
 		_ = err
-	}
-
-	{
-		err := error(b.StructError{Message: "error"})
-		err = stacked.Wrap(err)
 	}
 
 	{
@@ -108,13 +110,8 @@ func structLiteralShortDeclarationInternal() {
 	}
 
 	{
-		_, err := 0, error(b.StructError{Message: "error"}) // want "b.StructError literal is not wrapped with stacked"
+		_, err := 0, error(b.StructError{Message: "error"}) // want "b.StructError literal is not wrapped with stacked" "value converted to error type error is not wrapped with stacked"
 		_ = err
-	}
-
-	{
-		_, err := 0, error(b.StructError{Message: "error"})
-		err = stacked.Wrap(err)
 	}
 }
 
