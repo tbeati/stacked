@@ -61,53 +61,53 @@ func newFileChecker(config *Config, pass *analysis.Pass, file *ast.File) *fileCh
 	}
 }
 
-func (c *fileChecker) check() {
-	ast.Inspect(c.file, func(node ast.Node) bool {
-		c.functionTracker.depthFirstSearchStep(node)
-		c.assignmentTracker.depthFirstSearchStep(node)
-		c.trackTopLevelFunctionDeclaration(node)
+func (fc *fileChecker) check() {
+	ast.Inspect(fc.file, func(node ast.Node) bool {
+		fc.functionTracker.depthFirstSearchStep(node)
+		fc.assignmentTracker.depthFirstSearchStep(node)
+		fc.trackTopLevelFunctionDeclaration(node)
 
-		c.checkAssignmentWrapping(node)
+		fc.checkAssignmentWrapping(node)
 
-		if !c.isInFunction() {
+		if !fc.isInFunction() {
 			return true
 		}
 
 		switch node := node.(type) {
 		case *ast.DeclStmt:
-			c.assignmentTracker.enterNode()
+			fc.assignmentTracker.enterNode()
 		case *ast.GenDecl:
-			c.checkGenDecl(node)
+			fc.checkGenDecl(node)
 		case *ast.AssignStmt:
-			c.assignmentTracker.enterNode()
-			c.checkAssignStmt(node)
+			fc.assignmentTracker.enterNode()
+			fc.checkAssignStmt(node)
 		case *ast.ReturnStmt:
 			for _, result := range node.Results {
-				if c.shouldWrap(result) {
-					c.report(result)
+				if fc.shouldWrap(result) {
+					fc.report(result)
 				}
 			}
 		case *ast.CompositeLit:
 			for _, elt := range node.Elts {
 				switch elt := ast.Unparen(elt).(type) {
 				case *ast.KeyValueExpr:
-					if c.shouldWrap(elt.Value) {
-						c.report(elt.Value)
+					if fc.shouldWrap(elt.Value) {
+						fc.report(elt.Value)
 					}
 				default:
-					if c.shouldWrap(elt) {
-						c.report(elt)
+					if fc.shouldWrap(elt) {
+						fc.report(elt)
 					}
 				}
 			}
 		case *ast.CallExpr:
-			if c.isWrapCall(node) {
+			if fc.isWrapCall(node) {
 				return true
 			}
 
 			for _, arg := range node.Args {
-				if c.shouldWrap(arg) {
-					c.report(arg)
+				if fc.shouldWrap(arg) {
+					fc.report(arg)
 				}
 			}
 		}
@@ -116,59 +116,78 @@ func (c *fileChecker) check() {
 	})
 }
 
-func (c *fileChecker) isInFunction() bool {
-	return c.functionTracker.isInNode()
+func (fc *fileChecker) isInFunction() bool {
+	return fc.functionTracker.isInNode()
 }
 
-func (c *fileChecker) trackTopLevelFunctionDeclaration(node ast.Node) {
-	if c.isInFunction() {
+func (fc *fileChecker) trackTopLevelFunctionDeclaration(node ast.Node) {
+	if fc.isInFunction() {
 		return
 	}
 
 	switch node.(type) {
 	case *ast.FuncDecl:
-		c.functionTracker.enterNode()
+		fc.functionTracker.enterNode()
 	case *ast.FuncLit:
-		c.functionTracker.enterNode()
+		fc.functionTracker.enterNode()
 	}
 }
 
-func (c *fileChecker) report(expr ast.Expr) {
+func (fc *fileChecker) report(expr ast.Expr) {
 	switch expr := expr.(type) {
 	case *ast.Ident:
-		c.pass.Reportf(expr.Pos(), "%s is not wrapped with stacked", exprToString(expr))
+		fc.pass.Reportf(expr.Pos(), "%s is not wrapped with stacked", exprToString(expr))
 	case *ast.SelectorExpr:
-		c.pass.Reportf(expr.Pos(), "%s is not wrapped with stacked", exprToString(expr))
+		fc.pass.Reportf(expr.Pos(), "%s is not wrapped with stacked", exprToString(expr))
 	case *ast.CompositeLit:
-		c.pass.Reportf(expr.Pos(), "%s literal is not wrapped with stacked", exprToString(expr.Type))
+		fc.pass.Reportf(expr.Pos(), "%s literal is not wrapped with stacked", exprToString(expr.Type))
 	case *ast.CallExpr:
-		if c.isTypeConversion(expr) {
-			c.pass.Reportf(expr.Pos(), "value converted to error type %s is not wrapped with stacked", exprToString(expr.Fun))
+		if fc.isTypeConversion(expr) {
+			fc.pass.Reportf(expr.Pos(), "value converted to error type %s is not wrapped with stacked", exprToString(expr.Fun))
 		} else {
-			c.pass.Reportf(expr.Pos(), "error returned by %s is not wrapped with stacked", exprToString(expr.Fun))
+			fc.pass.Reportf(expr.Pos(), "error returned by %s is not wrapped with stacked", exprToString(expr.Fun))
 		}
 	}
 }
 
-func (c *fileChecker) shouldWrap(expr ast.Expr) bool {
+func (fc *fileChecker) shouldWrap(expr ast.Expr) bool {
+	if fc.isIgnored(expr) {
+		return false
+	}
+
 	expr = ast.Unparen(expr)
 
 	switch expr := expr.(type) {
 	case *ast.Ident:
-		return c.shouldWrapIdent(expr)
+		return fc.shouldWrapIdent(expr)
 	case *ast.SelectorExpr:
-		return c.shouldWrapSelector(expr)
+		return fc.shouldWrapSelector(expr)
 	case *ast.CompositeLit:
-		return c.shouldWrapCompositeLit(expr)
+		return fc.shouldWrapCompositeLit(expr)
 	case *ast.CallExpr:
-		return c.shouldWrapCall(expr)
+		return fc.shouldWrapCall(expr)
 	}
 
 	return false
 }
 
-func (c *fileChecker) shouldWrapIdent(ident *ast.Ident) bool {
-	obj := c.pass.TypesInfo.Uses[ident]
+func (fc *fileChecker) isIgnored(expr ast.Expr) bool {
+	line := fc.pass.Fset.Position(expr.Pos()).Line
+
+	for _, commentGroup := range fc.file.Comments {
+		for _, comment := range commentGroup.List {
+			commentLine := fc.pass.Fset.Position(comment.Pos()).Line
+			if line == commentLine && strings.Contains(comment.Text, "//stacked:disable") {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+func (fc *fileChecker) shouldWrapIdent(ident *ast.Ident) bool {
+	obj := fc.pass.TypesInfo.Uses[ident]
 
 	variable, ok := obj.(*types.Var)
 	if !ok {
@@ -178,8 +197,8 @@ func (c *fileChecker) shouldWrapIdent(ident *ast.Ident) bool {
 	return variable.Pkg() != nil && variable.Parent() == variable.Pkg().Scope() && isError(variable.Type())
 }
 
-func (c *fileChecker) shouldWrapSelector(expr *ast.SelectorExpr) bool {
-	obj := c.pass.TypesInfo.Uses[expr.Sel]
+func (fc *fileChecker) shouldWrapSelector(expr *ast.SelectorExpr) bool {
+	obj := fc.pass.TypesInfo.Uses[expr.Sel]
 
 	variable, ok := obj.(*types.Var)
 	if !ok {
@@ -189,23 +208,23 @@ func (c *fileChecker) shouldWrapSelector(expr *ast.SelectorExpr) bool {
 	return variable.Pkg() != nil && variable.Parent() == variable.Pkg().Scope() && isError(variable.Type())
 }
 
-func (c *fileChecker) shouldWrapCompositeLit(lit *ast.CompositeLit) bool {
-	return isError(c.pass.TypesInfo.TypeOf(lit))
+func (fc *fileChecker) shouldWrapCompositeLit(lit *ast.CompositeLit) bool {
+	return isError(fc.pass.TypesInfo.TypeOf(lit))
 }
 
-func (c *fileChecker) shouldWrapCall(call *ast.CallExpr) bool {
-	if c.isInternalCall(call) {
+func (fc *fileChecker) shouldWrapCall(call *ast.CallExpr) bool {
+	if fc.isInternalCall(call) {
 		return false
 	}
 
-	if c.isWrapCall(call) {
+	if fc.isWrapCall(call) {
 		return false
 	}
 
-	return c.returnsError(call)
+	return fc.returnsError(call)
 }
 
-func (c *fileChecker) checkGenDecl(stmt *ast.GenDecl) {
+func (fc *fileChecker) checkGenDecl(stmt *ast.GenDecl) {
 	if stmt.Tok != token.VAR {
 		return
 	}
@@ -220,10 +239,10 @@ func (c *fileChecker) checkGenDecl(stmt *ast.GenDecl) {
 		}
 
 		for _, name := range valueSpec.Names {
-			if isError(c.pass.TypesInfo.TypeOf(name)) {
+			if isError(fc.pass.TypesInfo.TypeOf(name)) {
 				errCount++
 				if errCount > 1 {
-					c.pass.Reportf(stmt.Pos(), "multiple errors")
+					fc.pass.Reportf(stmt.Pos(), "multiple errors")
 					return
 				}
 
@@ -241,31 +260,31 @@ func (c *fileChecker) checkGenDecl(stmt *ast.GenDecl) {
 		lsh = append(lsh, ident)
 	}
 
-	c.checkAssignment(lsh, errorSpec.Values)
+	fc.checkAssignment(lsh, errorSpec.Values)
 }
 
-func (c *fileChecker) checkAssignStmt(stmt *ast.AssignStmt) {
+func (fc *fileChecker) checkAssignStmt(stmt *ast.AssignStmt) {
 	errCount := 0
 	for _, expr := range stmt.Lhs {
-		exprType := c.pass.TypesInfo.TypeOf(expr)
+		exprType := fc.pass.TypesInfo.TypeOf(expr)
 		if exprType != nil && isError(exprType) {
 			errCount++
 			if errCount > 1 {
-				c.pass.Reportf(stmt.Pos(), "multiple errors")
+				fc.pass.Reportf(stmt.Pos(), "multiple errors")
 				return
 			}
 		}
 	}
 
-	c.checkAssignment(stmt.Lhs, stmt.Rhs)
+	fc.checkAssignment(stmt.Lhs, stmt.Rhs)
 }
 
-func (c *fileChecker) checkAssignment(lsh, rsh []ast.Expr) {
+func (fc *fileChecker) checkAssignment(lsh, rsh []ast.Expr) {
 	if len(lsh) == len(rsh) {
 		for i := range lsh {
-			if c.shouldWrap(rsh[i]) {
-				c.assignedErrorDst = ast.Unparen(lsh[i])
-				c.assignedErrorSrc = ast.Unparen(rsh[i])
+			if fc.shouldWrap(rsh[i]) {
+				fc.assignedErrorDst = ast.Unparen(lsh[i])
+				fc.assignedErrorSrc = ast.Unparen(rsh[i])
 				return
 			}
 		}
@@ -275,62 +294,60 @@ func (c *fileChecker) checkAssignment(lsh, rsh []ast.Expr) {
 			return
 		}
 
-		if !c.shouldWrapCall(call) {
-			return
+		if fc.shouldWrap(call) {
+			fc.assignedErrorDst = ast.Unparen(lsh[fc.errorReturnIndex(call)])
+			fc.assignedErrorSrc = call
 		}
-
-		c.assignedErrorDst = ast.Unparen(lsh[c.errorReturnIndex(call)])
-		c.assignedErrorSrc = call
 	}
 }
 
-func (c *fileChecker) checkAssignmentWrapping(node ast.Node) {
-	if c.assignedErrorDst != nil && !c.assignmentTracker.isInNode() {
-		assignedErrorDst := c.assignedErrorDst
-		assignedErrorSrc := c.assignedErrorSrc
-		c.assignedErrorDst = nil
-		c.assignedErrorSrc = nil
+func (fc *fileChecker) checkAssignmentWrapping(node ast.Node) {
+	if fc.assignedErrorDst != nil && !fc.assignmentTracker.isInNode() {
+		assignedErrorDst := fc.assignedErrorDst
+		assignedErrorSrc := fc.assignedErrorSrc
+		fc.assignedErrorDst = nil
+		fc.assignedErrorSrc = nil
 
 		assignStmt, ok := node.(*ast.AssignStmt)
 		if !ok {
-			c.report(assignedErrorSrc)
+			fc.report(assignedErrorSrc)
 			return
 		}
 
 		if len(assignStmt.Lhs) != 1 || len(assignStmt.Rhs) != 1 {
-			c.report(assignedErrorSrc)
+			fc.report(assignedErrorSrc)
 			return
 		}
 
 		call, ok := assignStmt.Rhs[0].(*ast.CallExpr)
 		if !ok {
-			c.report(assignedErrorSrc)
+			fc.report(assignedErrorSrc)
 			return
 		}
 
-		if !c.isWrapCall(call) {
-			c.report(assignedErrorSrc)
+		if !fc.isWrapCall(call) {
+			fc.report(assignedErrorSrc)
 			return
 		}
 
 		if !areExprsEqual(assignStmt.Lhs[0], assignedErrorDst) {
-			c.report(assignedErrorSrc)
+			fc.report(assignedErrorSrc)
 			return
 		}
 
 		if len(call.Args) != 1 {
-			c.report(assignedErrorSrc)
+			fc.report(assignedErrorSrc)
 			return
 		}
 
 		if !areExprsEqual(call.Args[0], assignedErrorDst) {
-			c.report(assignedErrorSrc)
+			fc.report(assignedErrorSrc)
 			return
 		}
 	}
 }
 
-func (c *fileChecker) isWrapCall(call *ast.CallExpr) bool {
+func (fc *fileChecker) isWrapCall(call *ast.CallExpr) bool {
 	selector, ok := call.Fun.(*ast.SelectorExpr)
 	if !ok {
 		return false
@@ -345,7 +362,7 @@ func (c *fileChecker) isWrapCall(call *ast.CallExpr) bool {
 		return false
 	}
 
-	obj := c.pass.TypesInfo.Uses[ident]
+	obj := fc.pass.TypesInfo.Uses[ident]
 
 	pkg, ok := obj.(*types.PkgName)
 	if !ok {
@@ -355,8 +372,8 @@ func (c *fileChecker) isWrapCall(call *ast.CallExpr) bool {
 	return pkg.Imported().Path() == "github.com/beati/stacked"
 }
 
-func (c *fileChecker) isInternalCall(call *ast.CallExpr) bool {
-	if c.isTypeConversion(call) {
+func (fc *fileChecker) isInternalCall(call *ast.CallExpr) bool {
+	if fc.isTypeConversion(call) {
 		return false
 	}
 
@@ -365,26 +382,26 @@ func (c *fileChecker) isInternalCall(call *ast.CallExpr) bool {
 		return true
 	}
 
-	pkg := c.pass.TypesInfo.Uses[selector.Sel].Pkg()
+	pkg := fc.pass.TypesInfo.Uses[selector.Sel].Pkg()
 	if pkg == nil {
 		return false
 	}
 
-	if c.config.isGeneratedPackage(pkg.Path()) {
+	if fc.config.isGeneratedPackage(pkg.Path()) {
 		return false
 	}
 
-	return strings.HasPrefix(pkg.Path(), c.pass.Module.Path)
+	return strings.HasPrefix(pkg.Path(), fc.pass.Module.Path)
 }
 
-func (c *fileChecker) isTypeConversion(call *ast.CallExpr) bool {
+func (fc *fileChecker) isTypeConversion(call *ast.CallExpr) bool {
 	var obj types.Object
 
 	switch fun := call.Fun.(type) {
 	case *ast.Ident:
-		obj = c.pass.TypesInfo.Uses[fun]
+		obj = fc.pass.TypesInfo.Uses[fun]
 	case *ast.SelectorExpr:
-		obj = c.pass.TypesInfo.Uses[fun.Sel]
+		obj = fc.pass.TypesInfo.Uses[fun.Sel]
 	}
 
 	if obj == nil {
@@ -395,8 +412,8 @@ func (c *fileChecker) isTypeConversion(call *ast.CallExpr) bool {
 	return isTypeName
 }
 
-func (c *fileChecker) errorReturnIndex(call *ast.CallExpr) int {
-	switch returnType := c.pass.TypesInfo.TypeOf(call).(type) {
+func (fc *fileChecker) errorReturnIndex(call *ast.CallExpr) int {
+	switch returnType := fc.pass.TypesInfo.TypeOf(call).(type) {
 	case *types.Named:
 		if isError(returnType) {
 			return 0
@@ -413,6 +430,6 @@ func (c *fileChecker) errorReturnIndex(call *ast.CallExpr) int {
 	return -1
 }
 
-func (c *fileChecker) returnsError(call *ast.CallExpr) bool {
-	return c.errorReturnIndex(call) >= 0
+func (fc *fileChecker) returnsError(call *ast.CallExpr) bool {
+	return fc.errorReturnIndex(call) >= 0
 }
