@@ -6,9 +6,24 @@ import (
 	"github.com/beati/stacked"
 )
 
-var errGlobal = os.Chdir("/")
+/*
+	{
+		var x, y = os.Open("")
+		_, _ = x, y
 
-var foo = errStruct{
+		var (
+			a, b     = os.Open("")
+			c, d     = 2, ""
+			e, f int = 2, 4
+		)
+
+		_, _ = a, b
+		_, _ = c, d
+		_, _ = e, f
+	}
+*/
+
+var foo = structWithErrorField{
 	err: os.Chdir("/"),
 }
 
@@ -100,11 +115,11 @@ func callExternalPackage() error {
 		return err
 	}
 
-	es := errStruct{
+	es := structWithErrorField{
 		err: f.Close(), // want "error returned by f.Close is not wrapped with stacked"
 	}
 
-	es = errStruct{
+	es = structWithErrorField{
 		f.Close(), // want "error returned by f.Close is not wrapped with stacked"
 	}
 

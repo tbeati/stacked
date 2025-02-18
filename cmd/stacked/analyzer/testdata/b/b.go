@@ -4,7 +4,7 @@ import (
 	"errors"
 )
 
-var ErrGlobal = errors.New("b error")
+var ErrGlobal = errors.New("error")
 
 type StringError string
 
@@ -28,12 +28,12 @@ func MultipleReturn() (int, error) {
 	return 0, nil
 }
 
-type S struct{}
+type StructWithMethods struct{}
 
-func (s *S) SingleReturn() error {
+func (s *StructWithMethods) SingleReturn() error {
 	return nil
 }
 
-func (s *S) MultipleReturn() (int, error) {
+func (s *StructWithMethods) MultipleReturn() (int, error) {
 	return 0, nil
 }

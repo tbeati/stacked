@@ -109,15 +109,15 @@ func stringLiteralReturnMultipleInternal() (int, error) {
 }
 
 func stringLiteralArgumentInternal() {
-	errArgument(0, b.StringError("error")) // want "value converted to error type b.StringError is not wrapped with stacked"
-	errArgument(0, stacked.Wrap(b.StringError("error")))
+	functionWithIntErrorArgument(0, b.StringError("error")) // want "value converted to error type b.StringError is not wrapped with stacked"
+	functionWithIntErrorArgument(0, stacked.Wrap(b.StringError("error")))
 }
 
 func stringLiteralCompositeLiteralInternal() {
-	_ = errStruct{
+	_ = structWithErrorField{
 		err: b.StringError("error"), // want "value converted to error type b.StringError is not wrapped with stacked"
 	}
-	_ = errStruct{
+	_ = structWithErrorField{
 		err: stacked.Wrap(b.StringError("error")),
 	}
 

@@ -8,7 +8,7 @@ import (
 
 func methodCallAssignmentInternal() error {
 	var err error
-	s := b.S{}
+	s := b.StructWithMethods{}
 
 	err = s.SingleReturn()
 	if err != nil {
@@ -57,7 +57,7 @@ func methodCallAssignmentInternal() error {
 }
 
 func methodCallDeclarationInternal() error {
-	s := b.S{}
+	s := b.StructWithMethods{}
 
 	{
 		var err = s.SingleReturn()
@@ -122,7 +122,7 @@ func methodCallDeclarationInternal() error {
 }
 
 func methodCallShortDeclarationInternal() error {
-	s := b.S{}
+	s := b.StructWithMethods{}
 
 	{
 		err := s.SingleReturn()
@@ -187,14 +187,14 @@ func methodCallShortDeclarationInternal() error {
 }
 
 func methodCallReturnSingleInternal() error {
-	s := b.S{}
+	s := b.StructWithMethods{}
 
 	return s.SingleReturn()
 	return stacked.Wrap(s.SingleReturn())
 }
 
 func methodCallReturnMultipleInternal() (int, error) {
-	s := b.S{}
+	s := b.StructWithMethods{}
 
 	return 0, s.SingleReturn()
 	return 0, stacked.Wrap(s.SingleReturn())
@@ -202,20 +202,20 @@ func methodCallReturnMultipleInternal() (int, error) {
 }
 
 func methodCallArgumentInternal() {
-	s := b.S{}
+	s := b.StructWithMethods{}
 
-	errArgument(0, s.SingleReturn())
-	errArgument(0, stacked.Wrap(s.SingleReturn()))
-	errArgument(s.MultipleReturn())
+	functionWithIntErrorArgument(0, s.SingleReturn())
+	functionWithIntErrorArgument(0, stacked.Wrap(s.SingleReturn()))
+	functionWithIntErrorArgument(s.MultipleReturn())
 }
 
 func methodCallCompositeLiteralInternal() {
-	s := b.S{}
+	s := b.StructWithMethods{}
 
-	_ = errStruct{
+	_ = structWithErrorField{
 		err: s.SingleReturn(),
 	}
-	_ = errStruct{
+	_ = structWithErrorField{
 		err: stacked.Wrap(s.SingleReturn()),
 	}
 

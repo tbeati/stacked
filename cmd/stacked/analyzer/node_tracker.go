@@ -8,11 +8,11 @@ func newNodeTracker() nodeTracker {
 	return -1
 }
 
-func (n *nodeTracker) enter() {
+func (n *nodeTracker) enterNode() {
 	*n = 1
 }
 
-func (n *nodeTracker) step(node ast.Node) {
+func (n *nodeTracker) depthFirstSearchStep(node ast.Node) {
 	if *n == 0 {
 		*n = -1
 	} else if *n > -1 {
@@ -24,6 +24,6 @@ func (n *nodeTracker) step(node ast.Node) {
 	}
 }
 
-func (n *nodeTracker) isIn() bool {
+func (n *nodeTracker) isInNode() bool {
 	return *n > -1
 }

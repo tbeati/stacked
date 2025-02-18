@@ -1,17 +1,39 @@
 package generated
 
+import (
+	"errors"
+)
+
+var ErrGlobal = errors.New("error")
+
 type StringError string
 
 func (err StringError) Error() string {
 	return string(err)
 }
 
-func F() error {
+type StructError struct {
+	Message string
+}
+
+func (err StructError) Error() string {
+	return err.Message
+}
+
+func SingleReturn() error {
 	return nil
 }
 
-type S struct{}
+func MultipleReturn() (int, error) {
+	return 0, nil
+}
 
-func (s *S) F() error {
+type StructWithMethods struct{}
+
+func (s *StructWithMethods) SingleReturn() error {
 	return nil
+}
+
+func (s *StructWithMethods) MultipleReturn() (int, error) {
+	return 0, nil
 }

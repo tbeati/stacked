@@ -7,5 +7,9 @@ import (
 )
 
 func Test(t *testing.T) {
-	analysistest.Run(t, analysistest.TestData(), NewAnalyzer([]string{"testdata/generated"}), "testdata/a")
+	config := Config{
+		GeneratedPackages: []string{"testdata/generated"},
+	}
+
+	analysistest.Run(t, analysistest.TestData(), NewAnalyzer(&config), "testdata/a")
 }

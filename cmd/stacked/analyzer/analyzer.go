@@ -63,8 +63,8 @@ func newFileChecker(config *Config, pass *analysis.Pass, file *ast.File) *fileCh
 
 func (c *fileChecker) check() {
 	ast.Inspect(c.file, func(node ast.Node) bool {
-		c.functionTracker.step(node)
-		c.assignmentTracker.step(node)
+		c.functionTracker.depthFirstSearchStep(node)
+		c.assignmentTracker.depthFirstSearchStep(node)
 		c.trackTopLevelFunctionDeclaration(node)
 
 		c.checkAssignmentWrapping(node)
@@ -75,11 +75,11 @@ func (c *fileChecker) check() {
 
 		switch node := node.(type) {
 		case *ast.DeclStmt:
-			c.assignmentTracker.enter()
+			c.assignmentTracker.enterNode()
 		case *ast.GenDecl:
 			c.checkGenDecl(node)
 		case *ast.AssignStmt:
-			c.assignmentTracker.enter()
+			c.assignmentTracker.enterNode()
 			c.checkAssignStmt(node)
 		case *ast.ReturnStmt:
 			for _, result := range node.Results {
@@ -117,7 +117,7 @@ func (c *fileChecker) check() {
 }
 
 func (c *fileChecker) isInFunction() bool {
-	return c.functionTracker.isIn()
+	return c.functionTracker.isInNode()
 }
 
 func (c *fileChecker) trackTopLevelFunctionDeclaration(node ast.Node) {
@@ -127,9 +127,9 @@ func (c *fileChecker) trackTopLevelFunctionDeclaration(node ast.Node) {
 
 	switch node.(type) {
 	case *ast.FuncDecl:
-		c.functionTracker.enter()
+		c.functionTracker.enterNode()
 	case *ast.FuncLit:
-		c.functionTracker.enter()
+		c.functionTracker.enterNode()
 	}
 }
 
@@ -285,7 +285,7 @@ func (c *fileChecker) checkAssignment(lsh, rsh []ast.Expr) {
 }
 
 func (c *fileChecker) checkAssignmentWrapping(node ast.Node) {
-	if c.assignedErrorDst != nil && !c.assignmentTracker.isIn() {
+	if c.assignedErrorDst != nil && !c.assignmentTracker.isInNode() {
 		assignedErrorDst := c.assignedErrorDst
 		assignedErrorSrc := c.assignedErrorSrc
 		c.assignedErrorDst = nil

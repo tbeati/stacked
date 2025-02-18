@@ -99,15 +99,15 @@ func globalVariableReturnMultipleInternal() (int, error) {
 }
 
 func globalVariableArgumentInternal() {
-	errArgument(0, b.ErrGlobal) // want "b.ErrGlobal is not wrapped with stacked"
-	errArgument(0, stacked.Wrap(b.ErrGlobal))
+	functionWithIntErrorArgument(0, b.ErrGlobal) // want "b.ErrGlobal is not wrapped with stacked"
+	functionWithIntErrorArgument(0, stacked.Wrap(b.ErrGlobal))
 }
 
 func globalVariableCompositeLiteralInternal() {
-	_ = errStruct{
+	_ = structWithErrorField{
 		err: b.ErrGlobal, // want "b.ErrGlobal is not wrapped with stacked"
 	}
-	_ = errStruct{
+	_ = structWithErrorField{
 		err: stacked.Wrap(b.ErrGlobal),
 	}
 

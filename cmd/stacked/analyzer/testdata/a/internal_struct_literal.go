@@ -25,23 +25,6 @@ func structLiteralAssignmentInternal() {
 }
 
 func structLiteralDeclarationInternal() {
-	/*
-		{
-			var x, y = os.Open("")
-			_, _ = x, y
-
-			var (
-				a, b     = os.Open("")
-				c, d     = 2, ""
-				e, f int = 2, 4
-			)
-
-			_, _ = a, b
-			_, _ = c, d
-			_, _ = e, f
-		}
-	*/
-
 	{
 		var err = b.StructError{Message: "error"} // want "b.StructError literal is not wrapped with stacked"
 		_ = err
@@ -126,15 +109,15 @@ func structLiteralReturnMultipleInternal() (int, error) {
 }
 
 func structLiteralArgumentInternal() {
-	errArgument(0, b.StructError{Message: "error"}) // want "b.StructError literal is not wrapped with stacked"
-	errArgument(0, stacked.Wrap(b.StructError{Message: "error"}))
+	functionWithIntErrorArgument(0, b.StructError{Message: "error"}) // want "b.StructError literal is not wrapped with stacked"
+	functionWithIntErrorArgument(0, stacked.Wrap(b.StructError{Message: "error"}))
 }
 
 func structLiteralCompositeLiteralInternal() {
-	_ = errStruct{
+	_ = structWithErrorField{
 		err: b.StructError{Message: "error"}, // want "b.StructError literal is not wrapped with stacked"
 	}
-	_ = errStruct{
+	_ = structWithErrorField{
 		err: stacked.Wrap(b.StructError{Message: "error"}),
 	}
 

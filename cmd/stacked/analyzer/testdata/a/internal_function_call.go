@@ -193,16 +193,16 @@ func functionCallReturnMultipleInternal() (int, error) {
 }
 
 func functionCallArgumentInternal() {
-	errArgument(0, b.SingleReturn())
-	errArgument(0, stacked.Wrap(b.SingleReturn()))
-	errArgument(b.MultipleReturn())
+	functionWithIntErrorArgument(0, b.SingleReturn())
+	functionWithIntErrorArgument(0, stacked.Wrap(b.SingleReturn()))
+	functionWithIntErrorArgument(b.MultipleReturn())
 }
 
 func functionCallCompositeLiteralInternal() {
-	_ = errStruct{
+	_ = structWithErrorField{
 		err: b.SingleReturn(),
 	}
-	_ = errStruct{
+	_ = structWithErrorField{
 		err: stacked.Wrap(b.SingleReturn()),
 	}
 
