@@ -3,7 +3,7 @@ package a
 import (
 	"io/fs"
 
-	"github.com/beati/stacked"
+	"github.com/tbeati/stacked"
 )
 
 func globalVariableAssignmentExternal() {

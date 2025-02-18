@@ -3,7 +3,7 @@ package a
 import (
 	"os"
 
-	"github.com/beati/stacked"
+	"github.com/tbeati/stacked"
 )
 
 func functionCallAssignmentExternal() error {

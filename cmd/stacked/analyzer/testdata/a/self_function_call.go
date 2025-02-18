@@ -1,7 +1,7 @@
 package a
 
 import (
-	"github.com/beati/stacked"
+	"github.com/tbeati/stacked"
 )
 
 func functionCallAssignmentSelf() error {

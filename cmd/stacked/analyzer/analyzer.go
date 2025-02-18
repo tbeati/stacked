@@ -369,7 +369,7 @@ func (fc *fileChecker) isWrapCall(call *ast.CallExpr) bool {
 		return false
 	}
 
-	return pkg.Imported().Path() == "github.com/beati/stacked"
+	return pkg.Imported().Path() == "github.com/tbeati/stacked"
 }
 
 func (fc *fileChecker) isInternalCall(call *ast.CallExpr) bool {
