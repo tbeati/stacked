@@ -4,19 +4,36 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
-	"slices"
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
 )
 
-func NewAnalyzer(generatedPackages []string) *analysis.Analyzer {
+type Config struct {
+	GeneratedPackages []string
+}
+
+func (c *Config) isGeneratedPackage(pkg string) bool {
+	for _, genPkg := range c.GeneratedPackages {
+		if strings.HasPrefix(pkg, genPkg) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func NewAnalyzer(config *Config) *analysis.Analyzer {
 	return &analysis.Analyzer{
 		Name: "stacked",
 		Doc:  "check for error not wrapped with stacked",
 		Run: func(pass *analysis.Pass) (interface{}, error) {
+			if config.isGeneratedPackage(pass.Pkg.Path()) {
+				return nil, nil
+			}
+
 			for _, file := range pass.Files {
-				newFileChecker(generatedPackages, pass, file).check()
+				newFileChecker(config, pass, file).check()
 			}
 			return nil, nil
 		},
@@ -24,9 +41,9 @@ func NewAnalyzer(generatedPackages []string) *analysis.Analyzer {
 }
 
 type fileChecker struct {
-	generatedPackages []string
-	pass              *analysis.Pass
-	file              *ast.File
+	config *Config
+	pass   *analysis.Pass
+	file   *ast.File
 
 	functionTracker   nodeTracker
 	assignmentTracker nodeTracker
@@ -34,9 +51,9 @@ type fileChecker struct {
 	assignedErrorSrc  ast.Expr
 }
 
-func newFileChecker(generatedPackage []string, pass *analysis.Pass, file *ast.File) *fileChecker {
+func newFileChecker(config *Config, pass *analysis.Pass, file *ast.File) *fileChecker {
 	return &fileChecker{
-		generatedPackages: generatedPackage,
+		config:            config,
 		pass:              pass,
 		file:              file,
 		functionTracker:   newNodeTracker(),
@@ -348,13 +365,16 @@ func (c *fileChecker) isInternalCall(call *ast.CallExpr) bool {
 		return true
 	}
 
-	pkg := c.pass.TypesInfo.Uses[selector.Sel].Pkg().Path()
-
-	if slices.Contains(c.generatedPackages, pkg) {
+	pkg := c.pass.TypesInfo.Uses[selector.Sel].Pkg()
+	if pkg == nil {
 		return false
 	}
 
-	return strings.HasPrefix(pkg, c.pass.Module.Path)
+	if c.config.isGeneratedPackage(pkg.Path()) {
+		return false
+	}
+
+	return strings.HasPrefix(pkg.Path(), c.pass.Module.Path)
 }
 
 func (c *fileChecker) isTypeConversion(call *ast.CallExpr) bool {
