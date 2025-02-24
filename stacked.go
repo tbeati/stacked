@@ -47,7 +47,7 @@ func Wrap(err error) error {
 	return newError(err, stackTrace)
 }
 
-func Unwrap(err error) []StackFrame {
+func StackTrace(err error) []StackFrame {
 	var stackErr *Error
 	if errors.As(err, &stackErr) {
 		return stackErr.StackTrace

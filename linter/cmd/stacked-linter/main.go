@@ -8,7 +8,7 @@ import (
 
 	"golang.org/x/tools/go/analysis/singlechecker"
 
-	"github.com/tbeati/stacked/cmd/stacked/analyzer"
+	"github.com/tbeati/stacked/linter"
 )
 
 func main() {
@@ -17,11 +17,11 @@ func main() {
 		log.Fatalf("error reading config file: %v", err)
 	}
 
-	var config analyzer.Config
+	var config linter.Config
 	err = json.Unmarshal(configContent, &config)
 	if err != nil {
 		log.Fatalf("error parsing config file: %v", err)
 	}
 
-	singlechecker.Main(analyzer.NewAnalyzer(&config))
+	singlechecker.Main(linter.NewAnalyzer(&config))
 }

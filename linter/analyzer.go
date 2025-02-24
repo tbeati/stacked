@@ -1,4 +1,4 @@
-package analyzer
+package linter
 
 import (
 	"go/ast"
@@ -10,11 +10,11 @@ import (
 )
 
 type Config struct {
-	GeneratedPackages []string
+	PackagesTreatedAsExternal []string
 }
 
-func (c *Config) isGeneratedPackage(pkg string) bool {
-	for _, genPkg := range c.GeneratedPackages {
+func (c *Config) isPackageTreatedAsExternal(pkg string) bool {
+	for _, genPkg := range c.PackagesTreatedAsExternal {
 		if strings.HasPrefix(pkg, genPkg) {
 			return true
 		}
@@ -28,7 +28,7 @@ func NewAnalyzer(config *Config) *analysis.Analyzer {
 		Name: "stacked",
 		Doc:  "check for error not wrapped with stacked",
 		Run: func(pass *analysis.Pass) (interface{}, error) {
-			if config.isGeneratedPackage(pass.Pkg.Path()) {
+			if config.isPackageTreatedAsExternal(pass.Pkg.Path()) {
 				return nil, nil
 			}
 
@@ -387,7 +387,7 @@ func (fc *fileChecker) isInternalCall(call *ast.CallExpr) bool {
 		return false
 	}
 
-	if fc.config.isGeneratedPackage(pkg.Path()) {
+	if fc.config.isPackageTreatedAsExternal(pkg.Path()) {
 		return false
 	}
 

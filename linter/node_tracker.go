@@ -1,4 +1,4 @@
-package analyzer
+package linter
 
 import "go/ast"
 
