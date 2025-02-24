@@ -10,7 +10,7 @@ import (
 )
 
 type Config struct {
-	PackagesTreatedAsExternal []string
+	PackagesTreatedAsExternal []string `json:"packages-treated-as-external"`
 }
 
 func (c *Config) isPackageTreatedAsExternal(pkg string) bool {
