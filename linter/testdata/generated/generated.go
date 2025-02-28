@@ -37,3 +37,7 @@ func (s *StructWithMethods) SingleReturn() error {
 func (s *StructWithMethods) MultipleReturn() (int, error) {
 	return 0, nil
 }
+
+func IgnoredFunction(err error) error {
+	return err
+}

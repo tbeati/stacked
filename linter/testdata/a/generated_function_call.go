@@ -1,6 +1,8 @@
 package a
 
 import (
+	"fmt"
+
 	"github.com/tbeati/stacked"
 
 	"testdata/generated"
@@ -211,4 +213,11 @@ func functionCallCompositeLiteralGenerated() {
 
 	_ = map[string]error{"": generated.SingleReturn()} // want "error returned by generated.SingleReturn is not wrapped with stacked"
 	_ = map[string]error{"": stacked.Wrap(generated.SingleReturn())}
+}
+
+func functionCallIgnoredGenerated() {
+	var err error
+	err = generated.IgnoredFunction(err)
+	err = fmt.Errorf("wrapping %w", err)
+	err = fmt.Errorf("not wrapping") // want "error returned by fmt.Errorf is not wrapped with stacked"
 }

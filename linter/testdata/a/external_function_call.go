@@ -190,6 +190,7 @@ func functionCallReturnMultipleExternal() (string, error) {
 	return "", os.Chdir("/") // want "error returned by os.Chdir is not wrapped with stacked"
 	return "", stacked.Wrap(os.Chdir("/"))
 	return os.Hostname() // want "error returned by os.Hostname is not wrapped with stacked"
+	return stacked.Wrap2(os.Hostname())
 }
 
 func functionCallArgumentExternal() {

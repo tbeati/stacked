@@ -11,6 +11,7 @@ import (
 
 type Config struct {
 	PackagesTreatedAsExternal []string `json:"packages-treated-as-external"`
+	IgnoredFunctions          []string `json:"ignored-functions"`
 }
 
 func (c *Config) isPackageTreatedAsExternal(pkg string) bool {
@@ -221,6 +222,10 @@ func (fc *fileChecker) shouldWrapCall(call *ast.CallExpr) bool {
 		return false
 	}
 
+	if fc.isIgnoredCall(call) {
+		return false
+	}
+
 	return fc.returnsError(call)
 }
 
@@ -353,7 +358,7 @@ func (fc *fileChecker) isWrapCall(call *ast.CallExpr) bool {
 		return false
 	}
 
-	if selector.Sel.Name != "Wrap" {
+	if selector.Sel.Name != "Wrap" && selector.Sel.Name != "Wrap2" {
 		return false
 	}
 
@@ -392,6 +397,43 @@ func (fc *fileChecker) isInternalCall(call *ast.CallExpr) bool {
 	}
 
 	return strings.HasPrefix(pkg.Path(), fc.pass.Module.Path)
+}
+
+func (fc *fileChecker) isIgnoredCall(call *ast.CallExpr) bool {
+	if fc.isTypeConversion(call) {
+		return false
+	}
+
+	selector, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok {
+		return false
+	}
+
+	pkg := fc.pass.TypesInfo.Uses[selector.Sel].Pkg()
+	if pkg == nil {
+		return false
+	}
+
+	functionPath := pkg.Path() + "." + selector.Sel.Name
+
+	for _, ignoredFunction := range fc.config.IgnoredFunctions {
+		if functionPath == ignoredFunction {
+			return true
+		}
+	}
+
+	if pkg.Path() == "fmt" && selector.Sel.Name == "Errorf" {
+		formatString, ok := call.Args[0].(*ast.BasicLit)
+		if !ok || formatString.Kind != token.STRING {
+			return false
+		}
+
+		if strings.Contains(formatString.Value, "%w") {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (fc *fileChecker) isTypeConversion(call *ast.CallExpr) bool {
