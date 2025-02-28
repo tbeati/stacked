@@ -32,6 +32,14 @@ func (se *Error) Unwrap() error {
 }
 
 func Wrap(err error) error {
+	return wrap(err, 4)
+}
+
+func Wrap2[T any](v T, err error) (T, error) {
+	return v, wrap(err, 4)
+}
+
+func wrap(err error, skip int) error {
 	if err == nil {
 		return nil
 	}
@@ -41,8 +49,7 @@ func Wrap(err error) error {
 		return err
 	}
 
-	const errStackSkip = 3
-	stackTrace := getStackTrace(errStackSkip)
+	stackTrace := getStackTrace(skip)
 
 	return newError(err, stackTrace)
 }
