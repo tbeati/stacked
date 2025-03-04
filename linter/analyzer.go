@@ -287,7 +287,7 @@ func (fc *fileChecker) checkAssignStmt(stmt *ast.AssignStmt) {
 func (fc *fileChecker) checkAssignment(lsh, rsh []ast.Expr) {
 	if len(lsh) == len(rsh) {
 		for i := range lsh {
-			if fc.shouldWrap(rsh[i]) {
+			if !isBlankIdent(lsh[i]) && fc.shouldWrap(rsh[i]) {
 				fc.assignedErrorDst = ast.Unparen(lsh[i])
 				fc.assignedErrorSrc = ast.Unparen(rsh[i])
 				return
@@ -300,8 +300,11 @@ func (fc *fileChecker) checkAssignment(lsh, rsh []ast.Expr) {
 		}
 
 		if fc.shouldWrap(call) {
-			fc.assignedErrorDst = ast.Unparen(lsh[fc.errorReturnIndex(call)])
-			fc.assignedErrorSrc = call
+			assignedErrorDst := ast.Unparen(lsh[fc.errorReturnIndex(call)])
+			if !isBlankIdent(assignedErrorDst) {
+				fc.assignedErrorDst = assignedErrorDst
+				fc.assignedErrorSrc = call
+			}
 		}
 	}
 }

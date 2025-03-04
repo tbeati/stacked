@@ -213,3 +213,8 @@ func functionCallCompositeLiteralExternal() {
 	_ = map[string]error{"": os.Chdir("/")} // want "error returned by os.Chdir is not wrapped with stacked"
 	_ = map[string]error{"": stacked.Wrap(os.Chdir("/"))}
 }
+
+func functionCallBlankAssignmentExternal() {
+	_, _ = 0, os.Chdir("/")
+	_, _ = os.Hostname()
+}
