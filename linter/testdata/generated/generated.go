@@ -41,3 +41,9 @@ func (s *StructWithMethods) MultipleReturn() (int, error) {
 func IgnoredFunction(err error) error {
 	return err
 }
+
+type IgnoredStruct struct{}
+
+func (s *IgnoredStruct) IgnoredMethod(err error) error {
+	return err
+}

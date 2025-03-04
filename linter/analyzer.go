@@ -409,27 +409,34 @@ func (fc *fileChecker) isIgnoredCall(call *ast.CallExpr) bool {
 		return false
 	}
 
+	sel := fc.pass.TypesInfo.Selections[selector]
+	if sel != nil {
+		methodPath := strings.TrimPrefix(sel.Recv().String(), "*") + "." + sel.Obj().Name()
+		for _, ignoredFunction := range fc.config.IgnoredFunctions {
+			if methodPath == ignoredFunction {
+				return true
+			}
+		}
+	}
+
 	pkg := fc.pass.TypesInfo.Uses[selector.Sel].Pkg()
-	if pkg == nil {
-		return false
-	}
-
-	functionPath := pkg.Path() + "." + selector.Sel.Name
-
-	for _, ignoredFunction := range fc.config.IgnoredFunctions {
-		if functionPath == ignoredFunction {
-			return true
-		}
-	}
-
-	if pkg.Path() == "fmt" && selector.Sel.Name == "Errorf" {
-		formatString, ok := call.Args[0].(*ast.BasicLit)
-		if !ok || formatString.Kind != token.STRING {
-			return false
+	if pkg != nil {
+		functionPath := pkg.Path() + "." + selector.Sel.Name
+		for _, ignoredFunction := range fc.config.IgnoredFunctions {
+			if functionPath == ignoredFunction {
+				return true
+			}
 		}
 
-		if strings.Contains(formatString.Value, "%w") {
-			return true
+		if pkg.Path() == "fmt" && selector.Sel.Name == "Errorf" {
+			formatString, ok := call.Args[0].(*ast.BasicLit)
+			if !ok || formatString.Kind != token.STRING {
+				return false
+			}
+
+			if strings.Contains(formatString.Value, "%w") {
+				return true
+			}
 		}
 	}
 

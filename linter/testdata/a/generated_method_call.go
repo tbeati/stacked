@@ -225,3 +225,10 @@ func methodCallCompositeLiteralGenerated() {
 	_ = map[string]error{"": s.SingleReturn()} // want "error returned by s.SingleReturn is not wrapped with stacked"
 	_ = map[string]error{"": stacked.Wrap(s.SingleReturn())}
 }
+
+func methodCallIgnoredGenerated() {
+	var err error
+	s := generated.IgnoredStruct{}
+	err = s.IgnoredMethod(err)
+	err = (&s).IgnoredMethod(err)
+}
