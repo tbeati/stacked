@@ -102,7 +102,7 @@ func (fc *fileChecker) check() {
 				}
 			}
 		case *ast.CallExpr:
-			if fc.isWrapCall(node) {
+			if fc.isWrapCall(node) || fc.isErrorCheckCall(node) {
 				return true
 			}
 
@@ -378,6 +378,31 @@ func (fc *fileChecker) isWrapCall(call *ast.CallExpr) bool {
 	}
 
 	return pkg.Imported().Path() == "github.com/tbeati/stacked"
+}
+
+func (fc *fileChecker) isErrorCheckCall(call *ast.CallExpr) bool {
+	selector, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok {
+		return false
+	}
+
+	if selector.Sel.Name != "Is" && selector.Sel.Name != "As" {
+		return false
+	}
+
+	ident, ok := selector.X.(*ast.Ident)
+	if !ok {
+		return false
+	}
+
+	obj := fc.pass.TypesInfo.Uses[ident]
+
+	pkg, ok := obj.(*types.PkgName)
+	if !ok {
+		return false
+	}
+
+	return pkg.Imported().Path() == "errors"
 }
 
 func (fc *fileChecker) isInternalCall(call *ast.CallExpr) bool {

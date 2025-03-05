@@ -1,6 +1,7 @@
 package a
 
 import (
+	"errors"
 	"io/fs"
 
 	"github.com/tbeati/stacked"
@@ -116,4 +117,9 @@ func globalVariableCompositeLiteralExternal() {
 
 	_ = map[string]error{"": fs.ErrNotExist} // want "fs.ErrNotExist is not wrapped with stacked"
 	_ = map[string]error{"": stacked.Wrap(fs.ErrNotExist)}
+}
+
+func globalVariableErrorCheckExternal() {
+	var err error
+	errors.Is(err, fs.ErrNotExist)
 }
