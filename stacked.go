@@ -39,6 +39,10 @@ func Wrap2[T any](v T, err error) (T, error) {
 	return v, wrap(err, 4)
 }
 
+func Wrap3[T1, T2 any](v1 T1, v2 T2, err error) (T1, T2, error) {
+	return v1, v2, wrap(err, 4)
+}
+
 func wrap(err error, skip int) error {
 	if err == nil {
 		return nil

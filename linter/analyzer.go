@@ -1,6 +1,7 @@
 package linter
 
 import (
+	"fmt"
 	"go/ast"
 	"go/token"
 	"go/types"
@@ -25,6 +26,10 @@ func (c *Config) isPackageTreatedAsExternal(pkg string) bool {
 }
 
 func NewAnalyzer(config *Config) *analysis.Analyzer {
+	if config == nil {
+		config = &Config{}
+	}
+
 	return &analysis.Analyzer{
 		Name: "stacked",
 		Doc:  "check for error not wrapped with stacked",
@@ -135,20 +140,53 @@ func (fc *fileChecker) trackTopLevelFunctionDeclaration(node ast.Node) {
 }
 
 func (fc *fileChecker) report(expr ast.Expr) {
+	var msg string
+	var valueCount = 1
+
 	switch expr := expr.(type) {
 	case *ast.Ident:
-		fc.pass.Reportf(expr.Pos(), "%s is not wrapped with stacked", exprToString(expr))
+		msg = fmt.Sprintf("%s is not wrapped with stacked", exprToString(expr))
 	case *ast.SelectorExpr:
-		fc.pass.Reportf(expr.Pos(), "%s is not wrapped with stacked", exprToString(expr))
+		msg = fmt.Sprintf("%s is not wrapped with stacked", exprToString(expr))
 	case *ast.CompositeLit:
-		fc.pass.Reportf(expr.Pos(), "%s literal is not wrapped with stacked", exprToString(expr.Type))
+		msg = fmt.Sprintf("%s literal is not wrapped with stacked", exprToString(expr.Type))
 	case *ast.CallExpr:
 		if fc.isTypeConversion(expr) {
-			fc.pass.Reportf(expr.Pos(), "value converted to error type %s is not wrapped with stacked", exprToString(expr.Fun))
+			msg = fmt.Sprintf("value converted to error type %s is not wrapped with stacked", exprToString(expr.Fun))
 		} else {
-			fc.pass.Reportf(expr.Pos(), "error returned by %s is not wrapped with stacked", exprToString(expr.Fun))
+			msg = fmt.Sprintf("error returned by %s is not wrapped with stacked", exprToString(expr.Fun))
+			valueCount = fc.returnValueCount(expr)
 		}
 	}
+
+	var suggestedFixes []analysis.SuggestedFix
+	if valueCount <= 3 {
+		suggestedFixes = []analysis.SuggestedFix{{
+			Message: "",
+			TextEdits: []analysis.TextEdit{{
+				Pos:     expr.Pos(),
+				End:     expr.End(),
+				NewText: []byte(fmt.Sprintf("stacked.Wrap%s(%s)", wrapValueCountString(valueCount), exprToString(expr))),
+			}},
+		}}
+	}
+
+	fc.pass.Report(analysis.Diagnostic{
+		Pos:            expr.Pos(),
+		Message:        msg,
+		SuggestedFixes: suggestedFixes,
+	})
+}
+
+func wrapValueCountString(valueCount int) string {
+	switch valueCount {
+	case 2:
+		return "2"
+	case 3:
+		return "3"
+	}
+
+	return ""
 }
 
 func (fc *fileChecker) shouldWrap(expr ast.Expr) bool {
@@ -487,6 +525,17 @@ func (fc *fileChecker) isTypeConversion(call *ast.CallExpr) bool {
 
 	_, isTypeName := obj.(*types.TypeName)
 	return isTypeName
+}
+
+func (fc *fileChecker) returnValueCount(call *ast.CallExpr) int {
+	callType := fc.pass.TypesInfo.TypeOf(call)
+
+	tuple, ok := callType.(*types.Tuple)
+	if ok {
+		return tuple.Len()
+	}
+
+	return 1
 }
 
 func (fc *fileChecker) errorReturnIndex(call *ast.CallExpr) int {
