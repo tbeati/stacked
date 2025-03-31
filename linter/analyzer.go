@@ -150,6 +150,13 @@ func (fc *fileChecker) report(expr ast.Expr) {
 		msg = fmt.Sprintf("%s is not wrapped with stacked", exprToString(expr))
 	case *ast.CompositeLit:
 		msg = fmt.Sprintf("%s literal is not wrapped with stacked", exprToString(expr.Type))
+	case *ast.UnaryExpr:
+		switch subExpr := expr.X.(type) {
+		case *ast.CompositeLit:
+			msg = fmt.Sprintf("%s literal is not wrapped with stacked", exprToString(subExpr.Type))
+		default:
+			msg = fmt.Sprintf("%s is not wrapped with stacked", exprToString(expr))
+		}
 	case *ast.CallExpr:
 		if fc.isTypeConversion(expr) {
 			msg = fmt.Sprintf("value converted to error type %s is not wrapped with stacked", exprToString(expr.Fun))
@@ -203,6 +210,8 @@ func (fc *fileChecker) shouldWrap(expr ast.Expr) bool {
 		return fc.shouldWrapSelector(expr)
 	case *ast.CompositeLit:
 		return fc.shouldWrapCompositeLit(expr)
+	case *ast.UnaryExpr:
+		return fc.shouldWrapUnary(expr)
 	case *ast.CallExpr:
 		return fc.shouldWrapCall(expr)
 	}
@@ -249,6 +258,10 @@ func (fc *fileChecker) shouldWrapSelector(expr *ast.SelectorExpr) bool {
 
 func (fc *fileChecker) shouldWrapCompositeLit(lit *ast.CompositeLit) bool {
 	return isError(fc.pass.TypesInfo.TypeOf(lit))
+}
+
+func (fc *fileChecker) shouldWrapUnary(expr *ast.UnaryExpr) bool {
+	return isError(fc.pass.TypesInfo.TypeOf(expr))
 }
 
 func (fc *fileChecker) shouldWrapCall(call *ast.CallExpr) bool {
@@ -539,18 +552,19 @@ func (fc *fileChecker) returnValueCount(call *ast.CallExpr) int {
 }
 
 func (fc *fileChecker) errorReturnIndex(call *ast.CallExpr) int {
-	switch returnType := fc.pass.TypesInfo.TypeOf(call).(type) {
-	case *types.Named:
-		if isError(returnType) {
-			return 0
-		}
-	case *types.Tuple:
-		for i := range returnType.Len() {
-			t, ok := returnType.At(i).Type().(*types.Named)
-			if ok && isError(t) {
+	returnType := fc.pass.TypesInfo.TypeOf(call)
+
+	tuple, ok := fc.pass.TypesInfo.TypeOf(call).(*types.Tuple)
+	if ok {
+		for i := range tuple.Len() {
+			if isError(tuple.At(i).Type()) {
 				return i
 			}
 		}
+	}
+
+	if isError(returnType) {
+		return 0
 	}
 
 	return -1

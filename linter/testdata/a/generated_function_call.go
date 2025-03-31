@@ -186,6 +186,10 @@ func functionCallShortDeclarationGenerated() error {
 func functionCallReturnSingleGenerated() error {
 	return generated.SingleReturn() // want "error returned by generated.SingleReturn is not wrapped with stacked"
 	return stacked.Wrap(generated.SingleReturn())
+	return generated.ReturnConcreteType() // want "error returned by generated.ReturnConcreteType is not wrapped with stacked"
+	return stacked.Wrap(generated.ReturnConcreteType())
+	return generated.ReturnConcreteTypePointer() // want "error returned by generated.ReturnConcreteTypePointer is not wrapped with stacked"
+	return stacked.Wrap(generated.ReturnConcreteTypePointer())
 }
 
 func functionCallReturnMultipleGenerated() (int, error) {
@@ -220,4 +224,11 @@ func functionCallIgnoredGenerated() {
 	err = generated.IgnoredFunction(err)
 	err = fmt.Errorf("wrapping %w", err)
 	err = fmt.Errorf("not wrapping") // want "error returned by fmt.Errorf is not wrapped with stacked"
+}
+
+func functionCallConcreteTypeGenerated() {
+	var err error
+	err = generated.ReturnConcreteType()        // want "error returned by generated.ReturnConcreteType is not wrapped with stacked"
+	err = generated.ReturnConcreteTypePointer() // want "error returned by generated.ReturnConcreteTypePointer is not wrapped with stacked"
+	_ = err
 }

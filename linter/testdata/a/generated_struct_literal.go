@@ -127,3 +127,8 @@ func structLiteralCompositeLiteralGenerated() {
 	_ = map[string]error{"": generated.StructError{Message: "error"}} // want "generated.StructError literal is not wrapped with stacked"
 	_ = map[string]error{"": stacked.Wrap(generated.StructError{Message: "error"})}
 }
+
+func structLiteralReturnSinglePointerGenerated() error {
+	return &generated.StructError{Message: "error"} // want "generated.StructError literal is not wrapped with stacked"
+	return stacked.Wrap(&generated.StructError{Message: "error"})
+}

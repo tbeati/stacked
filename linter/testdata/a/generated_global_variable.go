@@ -117,3 +117,10 @@ func globalVariableCompositeLiteralGenerated() {
 	_ = map[string]error{"": generated.ErrGlobal} // want "generated.ErrGlobal is not wrapped with stacked"
 	_ = map[string]error{"": stacked.Wrap(generated.ErrGlobal)}
 }
+
+func globalVariableReturnSinglePointerGenerated() error {
+	return &generated.ErrGlobalConcreteType // want "generated.ErrGlobalConcreteType is not wrapped with stacked"
+	return stacked.Wrap(generated.ErrGlobalConcreteType)
+	return generated.ErrGlobalConcreteTypePointer // want "generated.ErrGlobalConcreteTypePointer is not wrapped with stacked"
+	return stacked.Wrap(generated.ErrGlobalConcreteTypePointer)
+}

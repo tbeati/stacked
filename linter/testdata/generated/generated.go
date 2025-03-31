@@ -12,6 +12,9 @@ func (err StringError) Error() string {
 	return string(err)
 }
 
+var ErrGlobalConcreteType = StringError("error")
+var ErrGlobalConcreteTypePointer = &ErrGlobalConcreteType
+
 type StructError struct {
 	Message string
 }
@@ -46,4 +49,13 @@ type IgnoredStruct struct{}
 
 func (s *IgnoredStruct) IgnoredMethod(err error) error {
 	return err
+}
+
+func ReturnConcreteType() StringError {
+	return "error"
+}
+
+func ReturnConcreteTypePointer() *StringError {
+	var err = StringError("error")
+	return &err
 }
