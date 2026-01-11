@@ -3,6 +3,7 @@ package stacked
 import (
 	"errors"
 	"fmt"
+	"iter"
 	"os"
 	"runtime"
 )
@@ -41,6 +42,30 @@ func Wrap2[T any](v T, err error) (T, error) {
 
 func Wrap3[T1, T2 any](v1 T1, v2 T2, err error) (T1, T2, error) {
 	return v1, v2, wrap(err, 4)
+}
+
+func WrapSeq(seq iter.Seq[error]) iter.Seq[error] {
+	return func(yield func(error) bool) {
+		seq(func(err error) bool {
+			return yield(wrap(err, 4))
+		})
+	}
+}
+
+func WrapSeq2[T any](seq iter.Seq2[T, error]) iter.Seq2[T, error] {
+	return func(yield func(T, error) bool) {
+		seq(func(v T, err error) bool {
+			return yield(v, wrap(err, 4))
+		})
+	}
+}
+
+func WrapPull(err error, ok bool) (error, bool) {
+	return wrap(err, 4), ok
+}
+
+func WrapPull2[T any](v T, err error, ok bool) (T, error, bool) {
+	return v, wrap(err, 4), ok
 }
 
 func wrap(err error, skip int) error {
