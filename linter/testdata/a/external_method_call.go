@@ -1,212 +1,155 @@
 package a
 
 import (
+	"net"
+	"net/netip"
 	"os"
 
 	"github.com/tbeati/stacked"
 )
 
-func methodCallAssignmentExternal() error {
+func methodCallAssignmentExternal() {
 	var err error
-	var file *os.File
+	_ = err
+	var conn *net.UDPConn
 
-	err = file.Chdir() // want "error returned by file.Chdir is not wrapped with stacked"
-	if err != nil {
-		return err
-	}
+	err = conn.Close() // want "error returned by conn.Close is not wrapped with stacked"
+	err = stacked.Wrap(conn.Close())
 
-	err = stacked.Wrap(file.Chdir())
-	if err != nil {
-		return err
-	}
+	_, err = 0, conn.Close() // want "error returned by conn.Close is not wrapped with stacked"
+	_, err = 0, stacked.Wrap(conn.Close())
 
-	err = file.Chdir()
-	err = stacked.Wrap(err)
-	if err != nil {
-		return err
-	}
+	_, err = conn.File() // want "error returned by conn.File is not wrapped with stacked"
+	_, err = stacked.Wrap2(conn.File())
 
-	_, err = 0, file.Chdir() // want "error returned by file.Chdir is not wrapped with stacked"
-	if err != nil {
-		return err
-	}
-
-	_, err = 0, stacked.Wrap(file.Chdir())
-	if err != nil {
-		return err
-	}
-
-	_, err = 0, file.Chdir()
-	err = stacked.Wrap(err)
-	if err != nil {
-		return err
-	}
-
-	_, err = file.Read(nil) // want "error returned by file.Read is not wrapped with stacked"
-	if err != nil {
-		return err
-	}
-
-	_, err = file.Read(nil)
-	err = stacked.Wrap(err)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	_, _, _, _, err = conn.ReadMsgUDPAddrPort(nil, nil) // want "error returned by conn.ReadMsgUDPAddrPort is not wrapped with stacked"
+	_, _, _, _, err = stacked.Wrap5(conn.ReadMsgUDPAddrPort(nil, nil))
 }
 
-func methodCallDeclarationExternal() error {
-	var file *os.File
+func methodCallDeclarationExternal() {
+	var conn *net.UDPConn
 
 	{
-		var err = file.Chdir() // want "error returned by file.Chdir is not wrapped with stacked"
-		if err != nil {
-			return err
-		}
+		var err = conn.Close() // want "error returned by conn.Close is not wrapped with stacked"
+		_ = err
+	}
+	{
+		var err = stacked.Wrap(conn.Close())
+		_ = err
 	}
 
 	{
-		var err = stacked.Wrap(file.Chdir())
-		if err != nil {
-			return err
-		}
+		var _, err = 0, conn.Close() // want "error returned by conn.Close is not wrapped with stacked"
+		_ = err
+	}
+	{
+		var _, err = 0, stacked.Wrap(conn.Close())
+		_ = err
 	}
 
 	{
-		var err = file.Chdir()
-		err = stacked.Wrap(err)
-		if err != nil {
-			return err
-		}
+		var _, err = conn.File() // want "error returned by conn.File is not wrapped with stacked"
+		_ = err
+	}
+	{
+		var _, err = stacked.Wrap2(conn.File())
+		_ = err
 	}
 
 	{
-		var _, err = 0, file.Chdir() // want "error returned by file.Chdir is not wrapped with stacked"
-		if err != nil {
-			return err
-		}
+		var _, _, _, _, err = conn.ReadMsgUDPAddrPort(nil, nil) // want "error returned by conn.ReadMsgUDPAddrPort is not wrapped with stacked"
+		_ = err
 	}
-
 	{
-		var _, err = 0, stacked.Wrap(file.Chdir())
-		if err != nil {
-			return err
-		}
+		var _, _, _, _, err = stacked.Wrap5(conn.ReadMsgUDPAddrPort(nil, nil))
+		_ = err
 	}
-
-	{
-		var _, err = 0, file.Chdir()
-		err = stacked.Wrap(err)
-		if err != nil {
-			return err
-		}
-	}
-
-	{
-		var _, err = file.Read(nil) // want "error returned by file.Read is not wrapped with stacked"
-		if err != nil {
-			return err
-		}
-	}
-
-	{
-		var _, err = file.Read(nil)
-		err = stacked.Wrap(err)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
 }
 
-func methodCallShortDeclarationExternal() error {
-	var file *os.File
+func methodCallShortDeclarationExternal() {
+	var conn *net.UDPConn
 
 	{
-		err := file.Chdir() // want "error returned by file.Chdir is not wrapped with stacked"
-		if err != nil {
-			return err
-		}
+		err := conn.Close() // want "error returned by conn.Close is not wrapped with stacked"
+		_ = err
+	}
+	{
+		err := stacked.Wrap(conn.Close())
+		_ = err
 	}
 
 	{
-		err := stacked.Wrap(file.Chdir())
-		if err != nil {
-			return err
-		}
+		_, err := 0, conn.Close() // want "error returned by conn.Close is not wrapped with stacked"
+		_ = err
+	}
+	{
+		_, err := 0, stacked.Wrap(conn.Close())
+		_ = err
 	}
 
 	{
-		err := file.Chdir()
-		err = stacked.Wrap(err)
-		if err != nil {
-			return err
-		}
+		_, err := conn.File() // want "error returned by conn.File is not wrapped with stacked"
+		_ = err
+	}
+	{
+		_, err := stacked.Wrap2(conn.File())
+		_ = err
 	}
 
 	{
-		_, err := 0, file.Chdir() // want "error returned by file.Chdir is not wrapped with stacked"
-		if err != nil {
-			return err
-		}
+		_, _, _, _, err := conn.ReadMsgUDPAddrPort(nil, nil) // want "error returned by conn.ReadMsgUDPAddrPort is not wrapped with stacked"
+		_ = err
 	}
-
 	{
-		_, err := 0, stacked.Wrap(file.Chdir())
-		if err != nil {
-			return err
-		}
+		_, _, _, _, err := stacked.Wrap5(conn.ReadMsgUDPAddrPort(nil, nil))
+		_ = err
 	}
-
-	{
-		_, err := 0, file.Chdir()
-		err = stacked.Wrap(err)
-		if err != nil {
-			return err
-		}
-	}
-
-	{
-		_, err := file.Read(nil) // want "error returned by file.Read is not wrapped with stacked"
-		if err != nil {
-			return err
-		}
-	}
-
-	{
-		_, err := file.Read(nil)
-		err = stacked.Wrap(err)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
 }
 
-func methodCallReturnSingleExternal() error {
-	var file *os.File
+func methodCallReturn1External() error {
+	var conn *net.UDPConn
 
-	return file.Chdir() // want "error returned by file.Chdir is not wrapped with stacked"
-	return stacked.Wrap(file.Chdir())
+	return conn.Close() // want "error returned by conn.Close is not wrapped with stacked"
+	return stacked.Wrap(conn.Close())
 }
 
-func methodCallReturnMultipleExternal() (int, error) {
-	var file *os.File
+func methodCallReturn2External() (*os.File, error) {
+	var conn *net.UDPConn
 
-	return 0, file.Chdir() // want "error returned by file.Chdir is not wrapped with stacked"
-	return 0, stacked.Wrap(file.Chdir())
-	return file.Read(nil) // want "error returned by file.Read is not wrapped with stacked"
+	return nil, conn.Close() // want "error returned by conn.Close is not wrapped with stacked"
+	return nil, stacked.Wrap(conn.Close())
+
+	return conn.File() // want "error returned by conn.File is not wrapped with stacked"
+	return stacked.Wrap2(conn.File())
+}
+
+func methodCallReturn5External() (int, int, int, netip.AddrPort, error) {
+	var conn *net.UDPConn
+
+	return 0, 0, 0, netip.AddrPort{}, conn.Close() // want "error returned by conn.Close is not wrapped with stacked"
+	return 0, 0, 0, netip.AddrPort{}, stacked.Wrap(conn.Close())
+
+	return conn.ReadMsgUDPAddrPort(nil, nil) // want "error returned by conn.ReadMsgUDPAddrPort is not wrapped with stacked"
+	return stacked.Wrap5(conn.ReadMsgUDPAddrPort(nil, nil))
 }
 
 func methodCallArgumentExternal() {
-	var file *os.File
+	var conn *net.UDPConn
 
-	functionWithIntErrorArgument(0, file.Chdir()) // want "error returned by file.Chdir is not wrapped with stacked"
-	functionWithIntErrorArgument(0, stacked.Wrap(file.Chdir()))
-	functionWithIntErrorArgument(file.Read(nil)) // want "error returned by file.Read is not wrapped with stacked"
+	functionWithErrorArgument(conn.Close()) // want "error returned by conn.Close is not wrapped with stacked"
+	functionWithErrorArgument(stacked.Wrap(conn.Close()))
+
+	functionWithFileErrorArgument(nil, conn.Close()) // want "error returned by conn.Close is not wrapped with stacked"
+	functionWithFileErrorArgument(nil, stacked.Wrap(conn.Close()))
+
+	functionWithFileErrorArgument(conn.File()) // want "error returned by conn.File is not wrapped with stacked"
+	functionWithFileErrorArgument(stacked.Wrap2(conn.File()))
+
+	functionWithIntIntIntAddrPortErrorArgument(0, 0, 0, netip.AddrPort{}, conn.Close()) // want "error returned by conn.Close is not wrapped with stacked"
+	functionWithIntIntIntAddrPortErrorArgument(0, 0, 0, netip.AddrPort{}, stacked.Wrap(conn.Close()))
+
+	functionWithIntIntIntAddrPortErrorArgument(conn.ReadMsgUDPAddrPort(nil, nil)) // want "error returned by conn.ReadMsgUDPAddrPort is not wrapped with stacked"
+	functionWithIntIntIntAddrPortErrorArgument(stacked.Wrap5(conn.ReadMsgUDPAddrPort(nil, nil)))
 }
 
 func methodCallCompositeLiteralExternal() {
@@ -224,4 +167,21 @@ func methodCallCompositeLiteralExternal() {
 
 	_ = map[string]error{"": file.Chdir()} // want "error returned by file.Chdir is not wrapped with stacked"
 	_ = map[string]error{"": stacked.Wrap(file.Chdir())}
+}
+
+func methodCallChannelSendExternal() {
+	var errChan chan error
+	var file *os.File
+
+	errChan <- file.Chdir() // want "error returned by file.Chdir is not wrapped with stacked"
+	errChan <- stacked.Wrap(file.Chdir())
+}
+
+func methodCallBlankAssignmentExternal() {
+	var conn *net.UDPConn
+
+	_ = conn.Close()
+	_, _ = 0, conn.Close()
+	_, _ = conn.File()
+	_, _, _, _, _ = conn.ReadMsgUDPAddrPort(nil, nil)
 }

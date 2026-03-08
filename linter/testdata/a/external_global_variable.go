@@ -1,7 +1,6 @@
 package a
 
 import (
-	"errors"
 	"io/fs"
 
 	"github.com/tbeati/stacked"
@@ -9,20 +8,13 @@ import (
 
 func globalVariableAssignmentExternal() {
 	var err error
+	_ = err
 
 	err = fs.ErrNotExist // want "fs.ErrNotExist is not wrapped with stacked"
-
 	err = stacked.Wrap(fs.ErrNotExist)
 
-	err = fs.ErrNotExist
-	err = stacked.Wrap(err)
-
 	_, err = 0, fs.ErrNotExist // want "fs.ErrNotExist is not wrapped with stacked"
-
 	_, err = 0, stacked.Wrap(fs.ErrNotExist)
-
-	_, err = 0, fs.ErrNotExist
-	err = stacked.Wrap(err)
 }
 
 func globalVariableDeclarationExternal() {
@@ -30,30 +22,18 @@ func globalVariableDeclarationExternal() {
 		var err = fs.ErrNotExist // want "fs.ErrNotExist is not wrapped with stacked"
 		_ = err
 	}
-
 	{
 		var err = stacked.Wrap(fs.ErrNotExist)
 		_ = err
 	}
 
 	{
-		var err = fs.ErrNotExist
-		err = stacked.Wrap(err)
-	}
-
-	{
 		var _, err = 0, fs.ErrNotExist // want "fs.ErrNotExist is not wrapped with stacked"
 		_ = err
 	}
-
 	{
 		var _, err = 0, stacked.Wrap(fs.ErrNotExist)
 		_ = err
-	}
-
-	{
-		var _, err = 0, fs.ErrNotExist
-		err = stacked.Wrap(err)
 	}
 }
 
@@ -62,39 +42,27 @@ func globalVariableShortDeclarationExternal() {
 		err := fs.ErrNotExist // want "fs.ErrNotExist is not wrapped with stacked"
 		_ = err
 	}
-
 	{
 		err := stacked.Wrap(fs.ErrNotExist)
 		_ = err
 	}
 
 	{
-		err := fs.ErrNotExist
-		err = stacked.Wrap(err)
-	}
-
-	{
 		_, err := 0, fs.ErrNotExist // want "fs.ErrNotExist is not wrapped with stacked"
 		_ = err
 	}
-
 	{
 		_, err := 0, stacked.Wrap(fs.ErrNotExist)
 		_ = err
 	}
-
-	{
-		_, err := 0, fs.ErrNotExist
-		err = stacked.Wrap(err)
-	}
 }
 
-func globalVariableReturnSingleExternal() error {
+func globalVariableReturn1External() error {
 	return fs.ErrNotExist // want "fs.ErrNotExist is not wrapped with stacked"
 	return stacked.Wrap(fs.ErrNotExist)
 }
 
-func globalVariableReturnMultipleExternal() (int, error) {
+func globalVariableReturn2External() (int, error) {
 	return 0, fs.ErrNotExist // want "fs.ErrNotExist is not wrapped with stacked"
 	return 0, stacked.Wrap(fs.ErrNotExist)
 }
@@ -119,7 +87,9 @@ func globalVariableCompositeLiteralExternal() {
 	_ = map[string]error{"": stacked.Wrap(fs.ErrNotExist)}
 }
 
-func globalVariableErrorCheckExternal() {
-	var err error
-	errors.Is(err, fs.ErrNotExist)
+func globalVariableChannelSendExternal() {
+	var errChan chan error
+
+	errChan <- fs.ErrNotExist // want "fs.ErrNotExist is not wrapped with stacked"
+	errChan <- stacked.Wrap(fs.ErrNotExist)
 }

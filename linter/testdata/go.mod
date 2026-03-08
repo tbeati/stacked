@@ -1,6 +1,6 @@
 module testdata
 
-go 1.23
+go 1.26
 
 require github.com/tbeati/stacked v0.0.0
 

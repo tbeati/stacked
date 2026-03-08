@@ -37,3 +37,8 @@ func (s *StructWithMethods) SingleReturn() error {
 func (s *StructWithMethods) MultipleReturn() (int, error) {
 	return 0, nil
 }
+
+type Interface interface {
+	SingleReturn() error
+	MultipleReturn() (int, error)
+}

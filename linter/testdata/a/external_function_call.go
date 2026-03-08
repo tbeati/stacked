@@ -6,197 +6,135 @@ import (
 	"github.com/tbeati/stacked"
 )
 
-func functionCallAssignmentExternal() error {
+func functionCallAssignmentExternal() {
 	var err error
+	_ = err
 
 	err = os.Chdir("/") // want "error returned by os.Chdir is not wrapped with stacked"
-	if err != nil {
-		return err
-	}
-
 	err = stacked.Wrap(os.Chdir("/"))
-	if err != nil {
-		return err
-	}
-
-	err = os.Chdir("/")
-	err = stacked.Wrap(err)
-	if err != nil {
-		return err
-	}
 
 	_, err = 0, os.Chdir("/") // want "error returned by os.Chdir is not wrapped with stacked"
-	if err != nil {
-		return err
-	}
-
 	_, err = 0, stacked.Wrap(os.Chdir("/"))
-	if err != nil {
-		return err
-	}
-
-	_, err = 0, os.Chdir("/")
-	err = stacked.Wrap(err)
-	if err != nil {
-		return err
-	}
 
 	_, err = os.Hostname() // want "error returned by os.Hostname is not wrapped with stacked"
-	if err != nil {
-		return err
-	}
+	_, err = stacked.Wrap2(os.Hostname())
 
-	_, err = os.Hostname()
-	err = stacked.Wrap(err)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	_, _, err = os.Pipe() // want "error returned by os.Pipe is not wrapped with stacked"
+	_, _, err = stacked.Wrap3(os.Pipe())
 }
 
-func functionCallDeclarationExternal() error {
+func functionCallDeclarationExternal() {
 	{
 		var err = os.Chdir("/") // want "error returned by os.Chdir is not wrapped with stacked"
-		if err != nil {
-			return err
-		}
+		_ = err
 	}
-
 	{
 		var err = stacked.Wrap(os.Chdir("/"))
-		if err != nil {
-			return err
-		}
-	}
-
-	{
-		var err = os.Chdir("/")
-		err = stacked.Wrap(err)
-		if err != nil {
-			return err
-		}
+		_ = err
 	}
 
 	{
 		var _, err = 0, os.Chdir("/") // want "error returned by os.Chdir is not wrapped with stacked"
-		if err != nil {
-			return err
-		}
+		_ = err
 	}
-
 	{
 		var _, err = 0, stacked.Wrap(os.Chdir("/"))
-		if err != nil {
-			return err
-		}
-	}
-
-	{
-		var _, err = 0, os.Chdir("/")
-		err = stacked.Wrap(err)
-		if err != nil {
-			return err
-		}
+		_ = err
 	}
 
 	{
 		var _, err = os.Hostname() // want "error returned by os.Hostname is not wrapped with stacked"
-		if err != nil {
-			return err
-		}
+		_ = err
+	}
+	{
+		var _, err = stacked.Wrap2(os.Hostname())
+		_ = err
 	}
 
 	{
-		var _, err = os.Hostname()
-		err = stacked.Wrap(err)
-		if err != nil {
-			return err
-		}
+		var _, _, err = os.Pipe() // want "error returned by os.Pipe is not wrapped with stacked"
+		_ = err
 	}
-
-	return nil
+	{
+		var _, _, err = stacked.Wrap3(os.Pipe())
+		_ = err
+	}
 }
 
-func functionCallShortDeclarationExternal() error {
+func functionCallShortDeclarationExternal() {
 	{
 		err := os.Chdir("/") // want "error returned by os.Chdir is not wrapped with stacked"
-		if err != nil {
-			return err
-		}
+		_ = err
 	}
-
 	{
 		err := stacked.Wrap(os.Chdir("/"))
-		if err != nil {
-			return err
-		}
-	}
-
-	{
-		err := os.Chdir("/")
-		err = stacked.Wrap(err)
-		if err != nil {
-			return err
-		}
+		_ = err
 	}
 
 	{
 		_, err := 0, os.Chdir("/") // want "error returned by os.Chdir is not wrapped with stacked"
-		if err != nil {
-			return err
-		}
+		_ = err
 	}
-
 	{
 		_, err := 0, stacked.Wrap(os.Chdir("/"))
-		if err != nil {
-			return err
-		}
-	}
-
-	{
-		_, err := 0, os.Chdir("/")
-		err = stacked.Wrap(err)
-		if err != nil {
-			return err
-		}
+		_ = err
 	}
 
 	{
 		_, err := os.Hostname() // want "error returned by os.Hostname is not wrapped with stacked"
-		if err != nil {
-			return err
-		}
+		_ = err
+	}
+	{
+		_, err := stacked.Wrap2(os.Hostname())
+		_ = err
 	}
 
 	{
-		_, err := os.Hostname()
-		err = stacked.Wrap(err)
-		if err != nil {
-			return err
-		}
+		_, _, err := os.Pipe() // want "error returned by os.Pipe is not wrapped with stacked"
+		_ = err
 	}
-
-	return nil
+	{
+		_, _, err := stacked.Wrap3(os.Pipe())
+		_ = err
+	}
 }
 
-func functionCallReturnSingleExternal() error {
+func functionCallReturn1External() error {
 	return os.Chdir("/") // want "error returned by os.Chdir is not wrapped with stacked"
 	return stacked.Wrap(os.Chdir("/"))
 }
 
-func functionCallReturnMultipleExternal() (string, error) {
+func functionCallReturn2External() (string, error) {
 	return "", os.Chdir("/") // want "error returned by os.Chdir is not wrapped with stacked"
 	return "", stacked.Wrap(os.Chdir("/"))
+
 	return os.Hostname() // want "error returned by os.Hostname is not wrapped with stacked"
 	return stacked.Wrap2(os.Hostname())
 }
 
+func functionCallReturn3External() (*os.File, *os.File, error) {
+	return nil, nil, os.Chdir("/") // want "error returned by os.Chdir is not wrapped with stacked"
+	return nil, nil, stacked.Wrap(os.Chdir("/"))
+
+	return os.Pipe() // want "error returned by os.Pipe is not wrapped with stacked"
+	return stacked.Wrap3(os.Pipe())
+}
+
 func functionCallArgumentExternal() {
+	functionWithErrorArgument(os.Chdir("/")) // want "error returned by os.Chdir is not wrapped with stacked"
+	functionWithErrorArgument(stacked.Wrap(os.Chdir("/")))
+
 	functionWithStringErrorArgument("", os.Chdir("/")) // want "error returned by os.Chdir is not wrapped with stacked"
 	functionWithStringErrorArgument("", stacked.Wrap(os.Chdir("/")))
+
 	functionWithStringErrorArgument(os.Hostname()) // want "error returned by os.Hostname is not wrapped with stacked"
+	functionWithStringErrorArgument(stacked.Wrap2(os.Hostname()))
+
+	functionWithFileFileErrorArgument(nil, nil, os.Chdir("/")) // want "error returned by os.Chdir is not wrapped with stacked"
+	functionWithFileFileErrorArgument(nil, nil, stacked.Wrap(os.Chdir("/")))
+
+	functionWithFileFileErrorArgument(os.Pipe()) // want "error returned by os.Pipe is not wrapped with stacked"
+	functionWithFileFileErrorArgument(stacked.Wrap3(os.Pipe()))
 }
 
 func functionCallCompositeLiteralExternal() {
@@ -214,7 +152,16 @@ func functionCallCompositeLiteralExternal() {
 	_ = map[string]error{"": stacked.Wrap(os.Chdir("/"))}
 }
 
+func functionCallChannelSendExternal() {
+	var errChan chan error
+
+	errChan <- os.Chdir("/") // want "error returned by os.Chdir is not wrapped with stacked"
+	errChan <- stacked.Wrap(os.Chdir("/"))
+}
+
 func functionCallBlankAssignmentExternal() {
+	_ = os.Chdir("/")
 	_, _ = 0, os.Chdir("/")
 	_, _ = os.Hostname()
+	_, _, _ = os.Pipe()
 }

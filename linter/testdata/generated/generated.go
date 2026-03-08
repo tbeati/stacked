@@ -2,6 +2,7 @@ package generated
 
 import (
 	"errors"
+	"iter"
 )
 
 var ErrGlobal = errors.New("error")
@@ -41,6 +42,20 @@ func (s *StructWithMethods) MultipleReturn() (int, error) {
 	return 0, nil
 }
 
+type Interface interface {
+	SingleReturn() error
+	MultipleReturn() (int, error)
+}
+
+func ReturnConcreteType() StringError {
+	return "error"
+}
+
+func ReturnConcreteTypePointer() *StringError {
+	var err = StringError("error")
+	return &err
+}
+
 func IgnoredFunction(err error) error {
 	return err
 }
@@ -51,11 +66,18 @@ func (s *IgnoredStruct) IgnoredMethod(err error) error {
 	return err
 }
 
-func ReturnConcreteType() StringError {
-	return "error"
+type IgnoredInterface interface {
+	IgnoredMethod() error
 }
 
-func ReturnConcreteTypePointer() *StringError {
-	var err = StringError("error")
-	return &err
+func Seq(yield func(err error) bool) {}
+
+func Seq2(yield func(n int, err error) bool) {}
+
+func Iterator() iter.Seq[error] {
+	return Seq
+}
+
+func Iterator2() iter.Seq2[int, error] {
+	return Seq2
 }
