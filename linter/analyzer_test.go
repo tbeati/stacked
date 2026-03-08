@@ -12,6 +12,7 @@ func Test(t *testing.T) {
 		IgnoredFunctions: []string{
 			"testdata/generated.IgnoredFunction",
 			"testdata/generated.IgnoredStruct.IgnoredMethod",
+			"testdata/generated.IgnoredInterface.IgnoredMethod",
 		},
 	}
 

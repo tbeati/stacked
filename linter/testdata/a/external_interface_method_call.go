@@ -145,3 +145,10 @@ func externalInterfaceMethodCallBlankAssignmentExternal() {
 	_, _ = 0, file.Close()
 	_, _ = file.Stat()
 }
+
+func externalInterfaceMethodCallReturnValuesIgnoredExternal() {
+	var file fs.File
+
+	file.Close()
+	file.Stat()
+}

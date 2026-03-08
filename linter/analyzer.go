@@ -437,7 +437,7 @@ func (fc *fileChecker) isErrorCheckCall(call *ast.CallExpr) bool {
 		return false
 	}
 
-	if selector.Sel.Name != "Is" && selector.Sel.Name != "As" { // TODO: add AsType
+	if selector.Sel.Name != "Is" && selector.Sel.Name != "As" {
 		return false
 	}
 

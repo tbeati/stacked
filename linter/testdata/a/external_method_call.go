@@ -185,3 +185,11 @@ func methodCallBlankAssignmentExternal() {
 	_, _ = conn.File()
 	_, _, _, _, _ = conn.ReadMsgUDPAddrPort(nil, nil)
 }
+
+func methodCallReturnValuesIgnoredExternal() {
+	var conn *net.UDPConn
+
+	conn.Close()
+	conn.File()
+	conn.ReadMsgUDPAddrPort(nil, nil)
+}

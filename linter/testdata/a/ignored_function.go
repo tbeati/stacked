@@ -8,11 +8,11 @@ import (
 	"testdata/generated"
 )
 
-// errors As AsType Is Unwrap Join
-
 func assignmentIgnoredFunction() {
 	var err error
 	_ = err
+
+	err = generated.SingleReturn() //stacked:disabled
 
 	err = generated.IgnoredFunction(err)
 

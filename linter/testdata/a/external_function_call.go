@@ -165,3 +165,9 @@ func functionCallBlankAssignmentExternal() {
 	_, _ = os.Hostname()
 	_, _, _ = os.Pipe()
 }
+
+func functionCallReturnValuesIgnoredExternal() {
+	os.Chdir("/")
+	os.Hostname()
+	os.Pipe()
+}
