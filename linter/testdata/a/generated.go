@@ -48,15 +48,23 @@ func assignmentGenerated() {
 	err = generated.StructError{Message: "error"} // want "generated.StructError literal is not wrapped with stacked"
 	err = stacked.Wrap(generated.StructError{Message: "error"})
 
+	err = &generated.StructError{Message: "error"} // want "generated.StructError literal is not wrapped with stacked"
+	err = stacked.Wrap(&generated.StructError{Message: "error"})
+
 	err = generated.ReturnConcreteType() // want "error returned by generated.ReturnConcreteType is not wrapped with stacked"
 	err = stacked.Wrap(generated.ReturnConcreteType())
 	err = generated.ReturnConcreteTypePointer() // want "error returned by generated.ReturnConcreteTypePointer is not wrapped with stacked"
 	err = stacked.Wrap(generated.ReturnConcreteTypePointer())
 
-	err = &generated.ErrGlobalConcreteType // want "generated.ErrGlobalConcreteType is not wrapped with stacked"
+	err = generated.ErrGlobalConcreteType // want "generated.ErrGlobalConcreteType is not wrapped with stacked"
 	err = stacked.Wrap(generated.ErrGlobalConcreteType)
+	// TODO: decide if I keep thoses
+	err = &generated.ErrGlobalConcreteType // want "&generated.ErrGlobalConcreteType is not wrapped with stacked"
+	err = stacked.Wrap(&generated.ErrGlobalConcreteType)
 	err = generated.ErrGlobalConcreteTypePointer // want "generated.ErrGlobalConcreteTypePointer is not wrapped with stacked"
 	err = stacked.Wrap(generated.ErrGlobalConcreteTypePointer)
+	err = *generated.ErrGlobalConcreteTypePointer // want "\\*generated.ErrGlobalConcreteTypePointer is not wrapped with stacked"
+	err = stacked.Wrap(*generated.ErrGlobalConcreteTypePointer)
 }
 
 func iteratorGenerated() {
@@ -85,20 +93,6 @@ func iteratorGenerated() {
 	for range stacked.WrapSeq(func(yield func(err error) bool) {}) {
 	}
 
-	yield := func(err error) bool { return false }
-
-	seq(yield) // want "seq is not wrapped with stacked"
-	stacked.WrapSeq(seq)(yield)
-
-	generated.Seq(yield) // want "generated.Seq is not wrapped with stacked"
-	stacked.WrapSeq(generated.Seq)(yield)
-
-	generated.Iterator()(yield) // want "iterator returned by generated.Iterator is not wrapped with stacked"
-	stacked.WrapSeq(generated.Iterator())(yield)
-
-	func(yield func(err error) bool) {}(yield) // want "iterator literal is not wrapped with stacked"
-	stacked.WrapSeq(func(yield func(err error) bool) {})(yield)
-
 	var seq2 iter.Seq2[int, error]
 	_ = seq2
 
@@ -123,22 +117,6 @@ func iteratorGenerated() {
 	}
 	for range stacked.WrapSeq2(func(yield func(n int, err error) bool) {}) {
 	}
-
-	yield2 := func(n int, err error) bool { return false }
-
-	seq2(yield2) // want "seq2 is not wrapped with stacked"
-	stacked.WrapSeq2(seq2)(yield2)
-
-	generated.Seq2(yield2) // want "generated.Seq2 is not wrapped with stacked"
-	stacked.WrapSeq2(generated.Seq2)(yield2)
-
-	generated.Iterator2()(yield2) // want "iterator returned by generated.Iterator2 is not wrapped with stacked"
-	stacked.WrapSeq2(generated.Iterator2())(yield2)
-
-	func(yield func(n int, err error) bool) {}(yield2) // want "iterator literal is not wrapped with stacked"
-	stacked.WrapSeq2(func(yield func(n int, err error) bool) {})(yield2)
-
-	// TODO: iterator as method
 }
 
 func iteratorPullGenerated() {

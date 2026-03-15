@@ -5,6 +5,7 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"strconv"
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
@@ -32,6 +33,11 @@ func NewAnalyzer(config *Config) *analysis.Analyzer {
 		config = &Config{}
 	}
 
+	config.IgnoredFunctions = append(config.IgnoredFunctions,
+		"errors.Join",
+		"errors.Unwrap",
+	)
+
 	return &analysis.Analyzer{
 		Name: "stacked",
 		Doc:  "check for error not wrapped with stacked",
@@ -49,18 +55,31 @@ func NewAnalyzer(config *Config) *analysis.Analyzer {
 }
 
 type fileChecker struct {
-	config *Config
-	pass   *analysis.Pass
-	file   *ast.File
+	config       *Config
+	pass         *analysis.Pass
+	file         *ast.File
+	ignoredLines map[int]struct{}
 
 	functionTracker nodeTracker
 }
 
 func newFileChecker(config *Config, pass *analysis.Pass, file *ast.File) *fileChecker {
+	ignoredLines := make(map[int]struct{})
+	for _, commentGroup := range file.Comments {
+		for _, comment := range commentGroup.List {
+			directive, ok := ast.ParseDirective(comment.Pos(), comment.Text)
+			if ok && directive.Tool == "stacked" && directive.Name == "disable" {
+				line := pass.Fset.Position(comment.Pos()).Line
+				ignoredLines[line] = struct{}{}
+			}
+		}
+	}
+
 	return &fileChecker{
 		config:          config,
 		pass:            pass,
 		file:            file,
+		ignoredLines:    ignoredLines,
 		functionTracker: newNodeTracker(),
 	}
 }
@@ -86,6 +105,22 @@ func (fc *fileChecker) check() {
 					fc.report(result)
 				}
 			}
+		case *ast.CallExpr:
+			if fc.isWrapCall(node) {
+				return true
+			}
+
+			isErrorIsOrAs := fc.isErrorIsOrAs(node)
+
+			for i, arg := range node.Args {
+				if isErrorIsOrAs && i == 1 {
+					continue
+				}
+
+				if fc.shouldWrap(arg) {
+					fc.report(arg)
+				}
+			}
 		case *ast.CompositeLit:
 			for _, elt := range node.Elts {
 				switch elt := ast.Unparen(elt).(type) {
@@ -99,15 +134,9 @@ func (fc *fileChecker) check() {
 					}
 				}
 			}
-		case *ast.CallExpr:
-			if fc.isWrapCall(node) || fc.isErrorCheckCall(node) {
-				return true
-			}
-
-			for _, arg := range node.Args {
-				if fc.shouldWrap(arg) {
-					fc.report(arg)
-				}
+		case *ast.SendStmt:
+			if fc.shouldWrap(node.Value) {
+				fc.report(node.Value)
 			}
 		case *ast.RangeStmt:
 		}
@@ -133,226 +162,40 @@ func (fc *fileChecker) trackTopLevelFunctionDeclaration(node ast.Node) {
 	}
 }
 
-func (fc *fileChecker) report(expr ast.Expr) {
-	var msg string
-	var valueCount = 1
-
-	switch expr := expr.(type) {
-	case *ast.Ident:
-		msg = fmt.Sprintf("%s is not wrapped with stacked", exprToString(expr))
-	case *ast.SelectorExpr:
-		msg = fmt.Sprintf("%s is not wrapped with stacked", exprToString(expr))
-	case *ast.CompositeLit:
-		msg = fmt.Sprintf("%s literal is not wrapped with stacked", exprToString(expr.Type))
-	case *ast.UnaryExpr:
-		switch subExpr := expr.X.(type) {
-		case *ast.CompositeLit:
-			msg = fmt.Sprintf("%s literal is not wrapped with stacked", exprToString(subExpr.Type))
-		default:
-			msg = fmt.Sprintf("%s is not wrapped with stacked", exprToString(expr))
-		}
-	case *ast.CallExpr:
-		if fc.isTypeConversion(expr) {
-			msg = fmt.Sprintf("value converted to error type %s is not wrapped with stacked", exprToString(expr.Fun))
-		} else {
-			msg = fmt.Sprintf("error returned by %s is not wrapped with stacked", exprToString(expr.Fun))
-			valueCount = fc.returnValueCount(expr)
-		}
-	}
-
-	var suggestedFixes []analysis.SuggestedFix
-	if valueCount <= 3 {
-		suggestedFixes = []analysis.SuggestedFix{{
-			Message: "",
-			TextEdits: []analysis.TextEdit{{
-				Pos:     expr.Pos(),
-				End:     expr.End(),
-				NewText: []byte(fmt.Sprintf("stacked.Wrap%s(%s)", wrapValueCountString(valueCount), exprToString(expr))),
-			}},
-		}}
-
-		/*
-			addMissingImport := addMissingStackedImport(fc.file)
-			if addMissingImport != nil {
-				suggestedFixes[0].TextEdits = append(suggestedFixes[0].TextEdits, *addMissingImport)
-			}
-		*/
-	}
-
-	fc.pass.Report(analysis.Diagnostic{
-		Pos:            expr.Pos(),
-		Message:        msg,
-		SuggestedFixes: suggestedFixes,
-	})
-}
-
-func addMissingStackedImport(file *ast.File) *analysis.TextEdit {
-	for _, imp := range file.Imports {
-		if strings.Trim(imp.Path.Value, "\"") == stackedImportPath {
-			return nil
-		}
-	}
-
-	var importPos token.Pos
-	var newText string
-
-	switch len(file.Imports) {
-	case 0:
-		importPos = file.Name.End()
-		newText = fmt.Sprintf("\n\nimport \"%s\"", stackedImportPath)
-	case 1:
-		lastImport := file.Imports[len(file.Imports)-1]
-		importPos = lastImport.End()
-		newText = fmt.Sprintf("\nimport \"%s\"", stackedImportPath)
-	default:
-		lastImport := file.Imports[len(file.Imports)-1]
-		importPos = lastImport.End()
-		newText = fmt.Sprintf("\n\t\"%s\"", stackedImportPath)
-	}
-
-	return &analysis.TextEdit{
-		Pos:     importPos,
-		End:     importPos,
-		NewText: []byte(newText),
-	}
-}
-
-func wrapValueCountString(valueCount int) string {
-	switch valueCount {
-	case 2:
-		return "2"
-	case 3:
-		return "3"
-	case 4:
-		return "4"
-	case 5:
-		return "5"
-	}
-
-	return ""
-}
-
-func (fc *fileChecker) shouldWrap(expr ast.Expr) bool {
-	if fc.isIgnored(expr) {
-		return false
-	}
-
-	expr = ast.Unparen(expr)
-
-	switch expr := expr.(type) {
-	case *ast.Ident:
-		return fc.shouldWrapIdent(expr)
-	case *ast.SelectorExpr:
-		return fc.shouldWrapSelector(expr)
-	case *ast.CompositeLit:
-		return fc.shouldWrapCompositeLit(expr)
-	case *ast.UnaryExpr:
-		return fc.shouldWrapUnary(expr)
-	case *ast.CallExpr:
-		return fc.shouldWrapCall(expr)
-	}
-
-	return false
-}
-
-func (fc *fileChecker) isIgnored(expr ast.Expr) bool {
-	line := fc.pass.Fset.Position(expr.Pos()).Line
-
-	for _, commentGroup := range fc.file.Comments {
-		for _, comment := range commentGroup.List {
-			commentLine := fc.pass.Fset.Position(comment.Pos()).Line
-			if line == commentLine && strings.Contains(comment.Text, "//stacked:disable") {
-				return true
-			}
-		}
-	}
-
-	return false
-}
-
-func (fc *fileChecker) shouldWrapIdent(ident *ast.Ident) bool {
-	obj := fc.pass.TypesInfo.Uses[ident]
-
-	variable, ok := obj.(*types.Var)
-	if !ok {
-		return false
-	}
-
-	return variable.Pkg() != nil && variable.Parent() == variable.Pkg().Scope() && isError(variable.Type())
-}
-
-func (fc *fileChecker) shouldWrapSelector(expr *ast.SelectorExpr) bool {
-	obj := fc.pass.TypesInfo.Uses[expr.Sel]
-
-	variable, ok := obj.(*types.Var)
-	if !ok {
-		return false
-	}
-
-	return variable.Pkg() != nil && variable.Parent() == variable.Pkg().Scope() && isError(variable.Type())
-}
-
-func (fc *fileChecker) shouldWrapCompositeLit(lit *ast.CompositeLit) bool {
-	return isError(fc.pass.TypesInfo.TypeOf(lit))
-}
-
-func (fc *fileChecker) shouldWrapUnary(expr *ast.UnaryExpr) bool {
-	return isError(fc.pass.TypesInfo.TypeOf(expr))
-}
-
-func (fc *fileChecker) shouldWrapCall(call *ast.CallExpr) bool {
-	if fc.isInternalCall(call) {
-		return false
-	}
-
-	if fc.isWrapCall(call) {
-		return false
-	}
-
-	if fc.isIgnoredCall(call) {
-		return false
-	}
-
-	return fc.returnsError(call)
-}
-
 func (fc *fileChecker) checkGenDecl(stmt *ast.GenDecl) {
 	if stmt.Tok != token.VAR {
 		return
 	}
 
-	var errorSpec *ast.ValueSpec
-
-	errCount := 0
+SpecLoop:
 	for _, spec := range stmt.Specs {
 		valueSpec, ok := spec.(*ast.ValueSpec)
 		if !ok {
 			continue
 		}
 
+		if len(valueSpec.Values) == 0 {
+			continue
+		}
+
+		errCount := 0
 		for _, name := range valueSpec.Names {
 			if isError(fc.pass.TypesInfo.TypeOf(name)) {
 				errCount++
 				if errCount > 1 {
-					fc.pass.Reportf(stmt.Pos(), "multiple errors")
-					return
+					fc.pass.Reportf(stmt.Pos(), "multiple errors") //TODO: improve message
+					continue SpecLoop
 				}
-
-				errorSpec = valueSpec
 			}
 		}
-	}
 
-	if errorSpec == nil || len(errorSpec.Values) == 0 {
-		return
-	}
+		lsh := make([]ast.Expr, 0, len(valueSpec.Names))
+		for _, ident := range valueSpec.Names {
+			lsh = append(lsh, ident)
+		}
 
-	lsh := make([]ast.Expr, 0, len(errorSpec.Names))
-	for _, ident := range errorSpec.Names {
-		lsh = append(lsh, ident)
+		fc.checkAssignment(lsh, valueSpec.Values)
 	}
-
-	fc.checkAssignment(lsh, errorSpec.Values)
 }
 
 func (fc *fileChecker) checkAssignStmt(stmt *ast.AssignStmt) {
@@ -394,6 +237,170 @@ func (fc *fileChecker) checkAssignment(lsh, rsh []ast.Expr) {
 	}
 }
 
+func (fc *fileChecker) report(expr ast.Expr) {
+	var msg string
+	var valueCount = 1
+
+	expr = ast.Unparen(expr)
+	switch expr := expr.(type) {
+	case *ast.Ident:
+		msg = fmt.Sprintf("%s is not wrapped with stacked", exprToString(expr))
+	case *ast.SelectorExpr:
+		msg = fmt.Sprintf("%s is not wrapped with stacked", exprToString(expr))
+	case *ast.CompositeLit:
+		msg = fmt.Sprintf("%s literal is not wrapped with stacked", exprToString(expr.Type))
+	case *ast.UnaryExpr:
+		switch subExpr := expr.X.(type) {
+		case *ast.CompositeLit:
+			msg = fmt.Sprintf("%s literal is not wrapped with stacked", exprToString(subExpr.Type))
+		default:
+			if expr.Op == token.ARROW {
+				msg = fmt.Sprintf("error received from %s is not wrapped with stacked", exprToString(expr.X))
+			} else {
+				msg = fmt.Sprintf("%s is not wrapped with stacked", exprToString(expr))
+			}
+		}
+	case *ast.StarExpr:
+		msg = fmt.Sprintf("%s is not wrapped with stacked", exprToString(expr))
+	case *ast.CallExpr:
+		if fc.isTypeConversion(expr) {
+			msg = fmt.Sprintf("value converted to error type %s is not wrapped with stacked", exprToString(expr.Fun))
+		} else {
+			msg = fmt.Sprintf("error returned by %s is not wrapped with stacked", exprToString(expr.Fun))
+			valueCount = fc.returnValueCount(expr)
+		}
+	}
+
+	var suggestedFixes []analysis.SuggestedFix
+	if valueCount <= 5 {
+		wrapValueCountString := ""
+		if valueCount > 1 {
+			wrapValueCountString = strconv.Itoa(valueCount)
+		}
+
+		suggestedFixes = []analysis.SuggestedFix{{
+			Message: "", // TODO: add message
+			TextEdits: []analysis.TextEdit{{
+				Pos:     expr.Pos(),
+				End:     expr.End(),
+				NewText: []byte(fmt.Sprintf("stacked.Wrap%s(%s)", wrapValueCountString, exprToString(expr))),
+			}},
+		}}
+
+		addMissingImport := addMissingStackedImport(fc.file)
+		if addMissingImport != nil {
+			suggestedFixes[0].TextEdits = append(suggestedFixes[0].TextEdits, *addMissingImport)
+		}
+	}
+
+	fc.pass.Report(analysis.Diagnostic{
+		Pos:            expr.Pos(),
+		Message:        msg,
+		SuggestedFixes: suggestedFixes,
+	})
+}
+
+func addMissingStackedImport(file *ast.File) *analysis.TextEdit {
+	for _, imp := range file.Imports {
+		importPath, err := strconv.Unquote(imp.Path.Value)
+		if err == nil && importPath == stackedImportPath {
+			return nil
+		}
+	}
+
+	importPos := file.Name.End()
+	newText := fmt.Sprintf("\nimport \"%s\"\n", stackedImportPath)
+
+	return &analysis.TextEdit{
+		Pos:     importPos,
+		End:     importPos,
+		NewText: []byte(newText),
+	}
+}
+
+func (fc *fileChecker) shouldWrap(expr ast.Expr) bool {
+	if fc.isIgnoredLine(expr) {
+		return false
+	}
+
+	expr = ast.Unparen(expr)
+	switch expr := expr.(type) {
+	case *ast.Ident:
+		return fc.shouldWrapIdent(expr)
+	case *ast.SelectorExpr:
+		return fc.shouldWrapSelector(expr)
+	case *ast.CompositeLit:
+		return fc.shouldWrapCompositeLit(expr)
+	case *ast.UnaryExpr:
+		return fc.shouldWrapUnary(expr)
+	case *ast.StarExpr:
+	case *ast.CallExpr:
+		return fc.shouldWrapCall(expr)
+	}
+
+	return false
+}
+
+func (fc *fileChecker) isIgnoredLine(expr ast.Expr) bool {
+	line := fc.pass.Fset.Position(expr.Pos()).Line
+	_, isIgnored := fc.ignoredLines[line]
+	return isIgnored
+}
+
+func (fc *fileChecker) shouldWrapIdent(ident *ast.Ident) bool {
+	obj := fc.pass.TypesInfo.ObjectOf(ident)
+
+	variable, ok := obj.(*types.Var)
+	if !ok {
+		return false
+	}
+
+	return isError(variable.Type()) && variable.Pkg() != nil && variable.Parent() == variable.Pkg().Scope()
+}
+
+func (fc *fileChecker) shouldWrapSelector(expr *ast.SelectorExpr) bool {
+	obj := fc.pass.TypesInfo.ObjectOf(expr.Sel)
+
+	variable, ok := obj.(*types.Var)
+	if !ok {
+		return false
+	}
+
+	return isError(variable.Type()) && variable.Pkg() != nil && variable.Parent() == variable.Pkg().Scope()
+}
+
+func (fc *fileChecker) shouldWrapCompositeLit(lit *ast.CompositeLit) bool {
+	return isError(fc.pass.TypesInfo.TypeOf(lit))
+}
+
+func (fc *fileChecker) shouldWrapUnary(expr *ast.UnaryExpr) bool {
+	return isError(fc.pass.TypesInfo.TypeOf(expr))
+}
+
+func (fc *fileChecker) shouldWrapCall(call *ast.CallExpr) bool {
+	if fc.isWrapCall(call) {
+		return false
+	}
+
+	if fc.isTypeConversion(call) {
+		return fc.returnsError(call)
+	}
+
+	if fc.isFunctionLiteral(call) {
+		return fc.returnsError(call)
+	}
+
+	if fc.isInternalCall(call) {
+		return false
+	}
+
+	if fc.isIgnoredCall(call) {
+		return false
+	}
+
+	return fc.returnsError(call)
+}
+
 func (fc *fileChecker) isWrapCall(call *ast.CallExpr) bool {
 	selector, ok := call.Fun.(*ast.SelectorExpr)
 	if !ok {
@@ -421,7 +428,7 @@ func (fc *fileChecker) isWrapCall(call *ast.CallExpr) bool {
 		return false
 	}
 
-	obj := fc.pass.TypesInfo.Uses[ident]
+	obj := fc.pass.TypesInfo.ObjectOf(ident)
 
 	pkg, ok := obj.(*types.PkgName)
 	if !ok {
@@ -431,58 +438,64 @@ func (fc *fileChecker) isWrapCall(call *ast.CallExpr) bool {
 	return pkg.Imported().Path() == stackedImportPath
 }
 
-func (fc *fileChecker) isErrorCheckCall(call *ast.CallExpr) bool {
-	selector, ok := call.Fun.(*ast.SelectorExpr)
-	if !ok {
-		return false
-	}
+func (fc *fileChecker) isTypeConversion(call *ast.CallExpr) bool {
+	callType, ok := fc.pass.TypesInfo.Types[call.Fun]
+	return ok && callType.IsType()
+}
 
-	if selector.Sel.Name != "Is" && selector.Sel.Name != "As" {
-		return false
-	}
-
-	ident, ok := selector.X.(*ast.Ident)
-	if !ok {
-		return false
-	}
-
-	obj := fc.pass.TypesInfo.Uses[ident]
-
-	pkg, ok := obj.(*types.PkgName)
-	if !ok {
-		return false
-	}
-
-	return pkg.Imported().Path() == "errors"
+func (fc *fileChecker) isFunctionLiteral(call *ast.CallExpr) bool {
+	_, isFuncLit := call.Fun.(*ast.FuncLit)
+	return isFuncLit
 }
 
 func (fc *fileChecker) isInternalCall(call *ast.CallExpr) bool {
-	if fc.isTypeConversion(call) {
-		return false
+	switch fun := call.Fun.(type) {
+	case *ast.Ident:
+		obj := fc.pass.TypesInfo.ObjectOf(fun)
+
+		_, isFunc := obj.(*types.Func)
+		if !isFunc {
+			return false
+		}
+
+		return obj.Pkg() != nil
+	case *ast.SelectorExpr:
+		obj := fc.pass.TypesInfo.ObjectOf(fun.Sel)
+
+		sel := fc.pass.TypesInfo.Selections[fun]
+		if sel != nil {
+			if sel.Kind() == types.FieldVal {
+				return false
+			}
+
+			recvType := sel.Recv()
+			_, isInterface := recvType.Underlying().(*types.Interface)
+			if isInterface {
+				return false
+			}
+		} else {
+			_, isFunc := obj.(*types.Func)
+			if !isFunc {
+				return false
+			}
+		}
+
+		pkg := obj.Pkg()
+		if pkg == nil {
+			return false
+		}
+
+		if fc.config.isPackageTreatedAsExternal(pkg.Path()) {
+			return false
+		}
+
+		return strings.HasPrefix(pkg.Path(), fc.pass.Module.Path)
 	}
 
-	selector, ok := call.Fun.(*ast.SelectorExpr)
-	if !ok {
-		return true
-	}
-
-	pkg := fc.pass.TypesInfo.Uses[selector.Sel].Pkg()
-	if pkg == nil {
-		return false
-	}
-
-	if fc.config.isPackageTreatedAsExternal(pkg.Path()) {
-		return false
-	}
-
-	return strings.HasPrefix(pkg.Path(), fc.pass.Module.Path)
+	return false
 }
 
 func (fc *fileChecker) isIgnoredCall(call *ast.CallExpr) bool {
-	if fc.isTypeConversion(call) {
-		return false
-	}
-
 	selector, ok := call.Fun.(*ast.SelectorExpr)
 	if !ok {
 		return false
@@ -490,16 +503,29 @@ func (fc *fileChecker) isIgnoredCall(call *ast.CallExpr) bool {
 
 	sel := fc.pass.TypesInfo.Selections[selector]
 	if sel != nil {
+		if sel.Kind() == types.FieldVal {
+			return false
+		}
+
 		methodPath := strings.TrimPrefix(sel.Recv().String(), "*") + "." + sel.Obj().Name()
 		for _, ignoredFunction := range fc.config.IgnoredFunctions {
 			if methodPath == ignoredFunction {
 				return true
 			}
 		}
-	}
+	} else {
+		obj := fc.pass.TypesInfo.ObjectOf(selector.Sel)
 
-	pkg := fc.pass.TypesInfo.Uses[selector.Sel].Pkg()
-	if pkg != nil {
+		_, isFunc := obj.(*types.Func)
+		if !isFunc {
+			return false
+		}
+
+		pkg := obj.Pkg()
+		if pkg == nil {
+			return false
+		}
+
 		functionPath := pkg.Path() + "." + selector.Sel.Name
 		for _, ignoredFunction := range fc.config.IgnoredFunctions {
 			if functionPath == ignoredFunction {
@@ -522,39 +548,14 @@ func (fc *fileChecker) isIgnoredCall(call *ast.CallExpr) bool {
 	return false
 }
 
-func (fc *fileChecker) isTypeConversion(call *ast.CallExpr) bool {
-	var obj types.Object
-
-	switch fun := call.Fun.(type) {
-	case *ast.Ident:
-		obj = fc.pass.TypesInfo.Uses[fun]
-	case *ast.SelectorExpr:
-		obj = fc.pass.TypesInfo.Uses[fun.Sel]
-	}
-
-	if obj == nil {
-		return false
-	}
-
-	_, isTypeName := obj.(*types.TypeName)
-	return isTypeName
-}
-
-func (fc *fileChecker) returnValueCount(call *ast.CallExpr) int {
-	callType := fc.pass.TypesInfo.TypeOf(call)
-
-	tuple, ok := callType.(*types.Tuple)
-	if ok {
-		return tuple.Len()
-	}
-
-	return 1
+func (fc *fileChecker) returnsError(call *ast.CallExpr) bool {
+	return fc.errorReturnIndex(call) >= 0
 }
 
 func (fc *fileChecker) errorReturnIndex(call *ast.CallExpr) int {
 	returnType := fc.pass.TypesInfo.TypeOf(call)
 
-	tuple, ok := fc.pass.TypesInfo.TypeOf(call).(*types.Tuple)
+	tuple, ok := returnType.(*types.Tuple)
 	if ok {
 		for i := range tuple.Len() {
 			if isError(tuple.At(i).Type()) {
@@ -570,8 +571,40 @@ func (fc *fileChecker) errorReturnIndex(call *ast.CallExpr) int {
 	return -1
 }
 
-func (fc *fileChecker) returnsError(call *ast.CallExpr) bool {
-	return fc.errorReturnIndex(call) >= 0
+func (fc *fileChecker) returnValueCount(call *ast.CallExpr) int {
+	callType := fc.pass.TypesInfo.TypeOf(call)
+
+	tuple, ok := callType.(*types.Tuple)
+	if ok {
+		return tuple.Len()
+	}
+
+	return 1
+}
+
+func (fc *fileChecker) isErrorIsOrAs(call *ast.CallExpr) bool {
+	selector, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok {
+		return false
+	}
+
+	if selector.Sel.Name != "Is" && selector.Sel.Name != "As" {
+		return false
+	}
+
+	ident, ok := selector.X.(*ast.Ident)
+	if !ok {
+		return false
+	}
+
+	obj := fc.pass.TypesInfo.ObjectOf(ident)
+
+	pkg, ok := obj.(*types.PkgName)
+	if !ok {
+		return false
+	}
+
+	return pkg.Imported().Path() == "errors"
 }
 
 func (fc *fileChecker) isErrorIterator(expr ast.Expr) (bool, int) {

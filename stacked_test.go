@@ -20,13 +20,19 @@ func TestIteratorPull(t *testing.T) {
 	err := Wrap(errors.New("error"))
 	t.Log(StackTrace(err))
 
-	seq := WrapSeq(func(yield func(err error) bool) {
+	seq := func(yield func(err error) bool) {
 		yield(errors.New("seq error"))
-	})
+	}
 
-	for err := range seq {
+	for err := range WrapSeq(seq) {
 		t.Log(StackTrace(err))
 	}
+
+	yield := func(err error) bool {
+		t.Log(StackTrace(err))
+		return false
+	}
+	WrapSeq(seq)(yield)
 
 	next, stop := iter.Pull(seq)
 	defer stop()
