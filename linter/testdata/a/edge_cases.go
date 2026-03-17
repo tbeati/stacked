@@ -4,6 +4,7 @@ import (
 	"os"
 
 	"github.com/tbeati/stacked"
+	"testdata/generated"
 )
 
 func multiDeclarations() {
@@ -79,4 +80,9 @@ func complexExpressions() {
 	err = stacked.Wrap(<-chanSliceExpr[0])
 }
 
-// TODO: make(errorType) / new(errorType)
+func newError() {
+	var err error
+	_ = err
+
+	err = new(generated.StructError) // want "error returned by new is not wrapped with stacked"
+}

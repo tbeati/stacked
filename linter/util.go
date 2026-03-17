@@ -18,9 +18,18 @@ func isError(t types.Type) bool {
 	return types.Implements(t, errorType)
 }
 
+func isBool(t types.Type) bool {
+	return types.Identical(t, types.Typ[types.Bool])
+}
+
 func isBlankIdent(expr ast.Expr) bool {
 	ident, ok := ast.Unparen(expr).(*ast.Ident)
 	return ok && ident.Name == "_"
+}
+
+func isFunctionLiteral(call *ast.CallExpr) bool {
+	_, isFuncLit := call.Fun.(*ast.FuncLit)
+	return isFuncLit
 }
 
 func exprToString(expr ast.Expr) string {

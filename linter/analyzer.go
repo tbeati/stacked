@@ -139,6 +139,10 @@ func (fc *fileChecker) check() {
 				fc.report(node.Value)
 			}
 		case *ast.RangeStmt:
+			shouldWrap, valueCount := fc.shouldWrapIterator(node.X)
+			if shouldWrap {
+				fc.reportIterator(node.X, valueCount)
+			}
 		}
 
 		return true
@@ -183,7 +187,7 @@ SpecLoop:
 			if isError(fc.pass.TypesInfo.TypeOf(name)) {
 				errCount++
 				if errCount > 1 {
-					fc.pass.Reportf(stmt.Pos(), "multiple errors") //TODO: improve message
+					fc.pass.Reportf(stmt.Pos(), "assignment to multiple error variables")
 					continue SpecLoop
 				}
 			}
@@ -205,7 +209,7 @@ func (fc *fileChecker) checkAssignStmt(stmt *ast.AssignStmt) {
 		if exprType != nil && isError(exprType) {
 			errCount++
 			if errCount > 1 {
-				fc.pass.Reportf(stmt.Pos(), "multiple errors")
+				fc.pass.Reportf(stmt.Pos(), "assignment to multiple error variables")
 				return
 			}
 		}
@@ -239,7 +243,9 @@ func (fc *fileChecker) checkAssignment(lsh, rsh []ast.Expr) {
 
 func (fc *fileChecker) report(expr ast.Expr) {
 	var msg string
-	var valueCount = 1
+	valueCount := 1
+	errorReturnIndex := 0
+	isIteratorPull := false
 
 	expr = ast.Unparen(expr)
 	switch expr := expr.(type) {
@@ -260,30 +266,90 @@ func (fc *fileChecker) report(expr ast.Expr) {
 				msg = fmt.Sprintf("%s is not wrapped with stacked", exprToString(expr))
 			}
 		}
-	case *ast.StarExpr:
-		msg = fmt.Sprintf("%s is not wrapped with stacked", exprToString(expr))
 	case *ast.CallExpr:
 		if fc.isTypeConversion(expr) {
 			msg = fmt.Sprintf("value converted to error type %s is not wrapped with stacked", exprToString(expr.Fun))
 		} else {
 			msg = fmt.Sprintf("error returned by %s is not wrapped with stacked", exprToString(expr.Fun))
-			valueCount = fc.returnValueCount(expr)
+			isIteratorPull, valueCount = fc.returnValueCount(expr)
+			errorReturnIndex = fc.errorReturnIndex(expr)
 		}
 	}
 
 	var suggestedFixes []analysis.SuggestedFix
-	if valueCount <= 5 {
+	if valueCount <= 5 && (isIteratorPull || errorReturnIndex == valueCount-1) {
+		wrapPull := ""
+		if isIteratorPull {
+			wrapPull = "Pull"
+		}
+
 		wrapValueCountString := ""
 		if valueCount > 1 {
 			wrapValueCountString = strconv.Itoa(valueCount)
 		}
 
+		wrapFuncName := fmt.Sprintf("stacked.Wrap%s%s", wrapPull, wrapValueCountString)
+
 		suggestedFixes = []analysis.SuggestedFix{{
-			Message: "", // TODO: add message
+			Message: fmt.Sprintf("Wrap with %s", wrapFuncName),
 			TextEdits: []analysis.TextEdit{{
 				Pos:     expr.Pos(),
 				End:     expr.End(),
-				NewText: []byte(fmt.Sprintf("stacked.Wrap%s(%s)", wrapValueCountString, exprToString(expr))),
+				NewText: []byte(fmt.Sprintf("%s(%s)", wrapFuncName, exprToString(expr))),
+			}},
+		}}
+
+		addMissingImport := addMissingStackedImport(fc.file)
+		if addMissingImport != nil {
+			suggestedFixes[0].TextEdits = append(suggestedFixes[0].TextEdits, *addMissingImport)
+		}
+	}
+
+	fc.pass.Report(analysis.Diagnostic{
+		Pos:            expr.Pos(),
+		Message:        msg,
+		SuggestedFixes: suggestedFixes,
+	})
+}
+
+func (fc *fileChecker) reportIterator(expr ast.Expr, valueCount int) {
+	var msg string
+
+	expr = ast.Unparen(expr)
+	switch expr := expr.(type) {
+	case *ast.FuncLit:
+		msg = fmt.Sprintf("iterator literal is not wrapped with stacked")
+	case *ast.UnaryExpr:
+		if expr.Op == token.ARROW {
+			msg = fmt.Sprintf("iterator received from %s is not wrapped with stacked", exprToString(expr.X))
+		} else {
+			msg = fmt.Sprintf("%s is not wrapped with stacked", exprToString(expr))
+		}
+	case *ast.CallExpr:
+		if fc.isTypeConversion(expr) {
+			msg = fmt.Sprintf("value converted to iterator type %s is not wrapped with stacked", exprToString(expr.Fun))
+		} else {
+			msg = fmt.Sprintf("iterator returned by %s is not wrapped with stacked", exprToString(expr.Fun))
+		}
+	default:
+		msg = fmt.Sprintf("%s is not wrapped with stacked", exprToString(expr))
+	}
+
+	var suggestedFixes []analysis.SuggestedFix
+	if valueCount <= 2 {
+		wrapValueCountString := ""
+		if valueCount > 1 {
+			wrapValueCountString = strconv.Itoa(valueCount)
+		}
+
+		wrapFuncName := fmt.Sprintf("stacked.WrapSeq%s", wrapValueCountString)
+
+		suggestedFixes = []analysis.SuggestedFix{{
+			Message: fmt.Sprintf("Wrap with %s", wrapFuncName),
+			TextEdits: []analysis.TextEdit{{
+				Pos:     expr.Pos(),
+				End:     expr.End(),
+				NewText: []byte(fmt.Sprintf("%s(%s)", wrapFuncName, exprToString(expr))),
 			}},
 		}}
 
@@ -333,7 +399,6 @@ func (fc *fileChecker) shouldWrap(expr ast.Expr) bool {
 		return fc.shouldWrapCompositeLit(expr)
 	case *ast.UnaryExpr:
 		return fc.shouldWrapUnary(expr)
-	case *ast.StarExpr:
 	case *ast.CallExpr:
 		return fc.shouldWrapCall(expr)
 	}
@@ -374,7 +439,17 @@ func (fc *fileChecker) shouldWrapCompositeLit(lit *ast.CompositeLit) bool {
 }
 
 func (fc *fileChecker) shouldWrapUnary(expr *ast.UnaryExpr) bool {
-	return isError(fc.pass.TypesInfo.TypeOf(expr))
+	isLiteralOrChannelReceive := false
+	switch expr.X.(type) {
+	case *ast.CompositeLit:
+		isLiteralOrChannelReceive = true
+	default:
+		if expr.Op == token.ARROW {
+			isLiteralOrChannelReceive = true
+		}
+	}
+
+	return isLiteralOrChannelReceive && isError(fc.pass.TypesInfo.TypeOf(expr))
 }
 
 func (fc *fileChecker) shouldWrapCall(call *ast.CallExpr) bool {
@@ -386,7 +461,7 @@ func (fc *fileChecker) shouldWrapCall(call *ast.CallExpr) bool {
 		return fc.returnsError(call)
 	}
 
-	if fc.isFunctionLiteral(call) {
+	if isFunctionLiteral(call) {
 		return fc.returnsError(call)
 	}
 
@@ -441,11 +516,6 @@ func (fc *fileChecker) isWrapCall(call *ast.CallExpr) bool {
 func (fc *fileChecker) isTypeConversion(call *ast.CallExpr) bool {
 	callType, ok := fc.pass.TypesInfo.Types[call.Fun]
 	return ok && callType.IsType()
-}
-
-func (fc *fileChecker) isFunctionLiteral(call *ast.CallExpr) bool {
-	_, isFuncLit := call.Fun.(*ast.FuncLit)
-	return isFuncLit
 }
 
 func (fc *fileChecker) isInternalCall(call *ast.CallExpr) bool {
@@ -571,15 +641,49 @@ func (fc *fileChecker) errorReturnIndex(call *ast.CallExpr) int {
 	return -1
 }
 
-func (fc *fileChecker) returnValueCount(call *ast.CallExpr) int {
+func (fc *fileChecker) returnValueCount(call *ast.CallExpr) (bool, int) {
 	callType := fc.pass.TypesInfo.TypeOf(call)
 
 	tuple, ok := callType.(*types.Tuple)
 	if ok {
-		return tuple.Len()
+		if fc.isIteratorPull(call) {
+			return true, tuple.Len() - 1
+		}
+
+		return false, tuple.Len()
 	}
 
-	return 1
+	return false, 1
+}
+
+func (fc *fileChecker) isIteratorPull(call *ast.CallExpr) bool {
+	funType := fc.pass.TypesInfo.TypeOf(call.Fun)
+	if funType == nil {
+		return false
+	}
+
+	sig, ok := funType.Underlying().(*types.Signature)
+	if !ok {
+		return false
+	}
+
+	if sig.Params().Len() > 0 {
+		return false
+	}
+
+	results := sig.Results()
+	if results == nil {
+		return false
+	}
+
+	switch results.Len() {
+	case 2:
+		return isError(results.At(0).Type()) && isBool(results.At(1).Type())
+	case 3:
+		return isError(results.At(1).Type()) && isBool(results.At(2).Type())
+	}
+
+	return false
 }
 
 func (fc *fileChecker) isErrorIsOrAs(call *ast.CallExpr) bool {
@@ -607,7 +711,14 @@ func (fc *fileChecker) isErrorIsOrAs(call *ast.CallExpr) bool {
 	return pkg.Imported().Path() == "errors"
 }
 
-func (fc *fileChecker) isErrorIterator(expr ast.Expr) (bool, int) {
+func (fc *fileChecker) shouldWrapIterator(expr ast.Expr) (bool, int) {
+	callExpr, isCall := expr.(*ast.CallExpr)
+	if isCall {
+		if fc.isWrapCall(callExpr) {
+			return false, 0
+		}
+	}
+
 	exprType := fc.pass.TypesInfo.TypeOf(expr)
 
 	sig, ok := types.Unalias(exprType).Underlying().(*types.Signature)
@@ -615,18 +726,33 @@ func (fc *fileChecker) isErrorIterator(expr ast.Expr) (bool, int) {
 		return false, 0
 	}
 
-	params := sig.Params()
-	results := sig.Results()
-
-	if params.Len() != 1 || results.Len() != 0 {
+	if !(sig.Params().Len() == 1 && sig.Results().Len() == 0) {
 		return false, 0
 	}
 
-	yieldSig, ok := types.Unalias(params.At(0).Type()).Underlying().(*types.Signature)
+	yieldSig, ok := types.Unalias(sig.Params().At(0).Type()).Underlying().(*types.Signature)
 	if !ok {
 		return false, 0
 	}
-	_ = yieldSig
+
+	if yieldSig.Results().Len() != 1 {
+		return false, 0
+	}
+	resType, ok := yieldSig.Results().At(0).Type().Underlying().(*types.Basic)
+	if !ok || resType.Kind() != types.Bool {
+		return false, 0
+	}
+
+	yieldParams := yieldSig.Params()
+	if !(yieldParams.Len() == 1 || yieldParams.Len() == 2) {
+		return false, 0
+	}
+
+	for i := 0; i < yieldParams.Len(); i++ {
+		if isError(yieldParams.At(i).Type()) {
+			return true, yieldParams.Len()
+		}
+	}
 
 	return false, 0
 }

@@ -58,13 +58,10 @@ func assignmentGenerated() {
 
 	err = generated.ErrGlobalConcreteType // want "generated.ErrGlobalConcreteType is not wrapped with stacked"
 	err = stacked.Wrap(generated.ErrGlobalConcreteType)
-	// TODO: decide if I keep thoses
-	err = &generated.ErrGlobalConcreteType // want "&generated.ErrGlobalConcreteType is not wrapped with stacked"
-	err = stacked.Wrap(&generated.ErrGlobalConcreteType)
 	err = generated.ErrGlobalConcreteTypePointer // want "generated.ErrGlobalConcreteTypePointer is not wrapped with stacked"
 	err = stacked.Wrap(generated.ErrGlobalConcreteTypePointer)
-	err = *generated.ErrGlobalConcreteTypePointer // want "\\*generated.ErrGlobalConcreteTypePointer is not wrapped with stacked"
-	err = stacked.Wrap(*generated.ErrGlobalConcreteTypePointer)
+	err = &generated.ErrGlobalConcreteType
+	err = *generated.ErrGlobalConcreteTypePointer
 }
 
 func iteratorGenerated() {
