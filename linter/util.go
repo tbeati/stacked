@@ -40,3 +40,14 @@ func exprToString(expr ast.Expr) string {
 	}
 	return s.String()
 }
+
+func typeToString(t types.Type, currentPkg *types.Package) string {
+	qualifier := func(pkg *types.Package) string {
+		if pkg == currentPkg {
+			return ""
+		}
+		return pkg.Name()
+	}
+
+	return types.TypeString(t, qualifier)
+}

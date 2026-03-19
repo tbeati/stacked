@@ -254,11 +254,13 @@ func (fc *fileChecker) report(expr ast.Expr) {
 	case *ast.SelectorExpr:
 		msg = fmt.Sprintf("%s is not wrapped with stacked", exprToString(expr))
 	case *ast.CompositeLit:
-		msg = fmt.Sprintf("%s literal is not wrapped with stacked", exprToString(expr.Type))
+		exprType := fc.pass.TypesInfo.TypeOf(expr)
+		msg = fmt.Sprintf("%s literal is not wrapped with stacked", typeToString(exprType, fc.pass.Pkg))
 	case *ast.UnaryExpr:
 		switch subExpr := expr.X.(type) {
 		case *ast.CompositeLit:
-			msg = fmt.Sprintf("%s literal is not wrapped with stacked", exprToString(subExpr.Type))
+			exprType := fc.pass.TypesInfo.TypeOf(subExpr)
+			msg = fmt.Sprintf("%s literal is not wrapped with stacked", typeToString(exprType, fc.pass.Pkg))
 		default:
 			if expr.Op == token.ARROW {
 				msg = fmt.Sprintf("error received from %s is not wrapped with stacked", exprToString(expr.X))
