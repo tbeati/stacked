@@ -5,6 +5,7 @@ import (
 	"go/printer"
 	"go/token"
 	"go/types"
+	"regexp"
 	"strings"
 )
 
@@ -14,8 +15,12 @@ func init() {
 	errorType = types.Universe.Lookup("error").Type().Underlying().(*types.Interface)
 }
 
-func isError(t types.Type) bool {
+func implementsError(t types.Type) bool {
 	return types.Implements(t, errorType)
+}
+
+func isError(t types.Type) bool {
+	return t.String() == "error"
 }
 
 func isBool(t types.Type) bool {
@@ -50,4 +55,11 @@ func typeToString(t types.Type, currentPkg *types.Package) string {
 	}
 
 	return types.TypeString(t, qualifier)
+}
+
+var wVerbRegex = regexp.MustCompile(`%[^a-zA-Z%]*w`)
+
+func containsWVerb(formatString string) bool {
+	cleanFormat := strings.ReplaceAll(formatString, "%%", "")
+	return wVerbRegex.MatchString(cleanFormat)
 }

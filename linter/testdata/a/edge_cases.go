@@ -7,6 +7,8 @@ import (
 	"testdata/generated"
 )
 
+var errTopLevel = generated.ErrGlobal
+
 func multiDeclarations() {
 	{
 		var (
@@ -85,4 +87,14 @@ func newError() {
 	_ = err
 
 	err = new(generated.StructError) // want "^error returned by new is not wrapped with stacked$"
+}
+
+func typeConversionArg() {
+	var err error
+	_ = err
+
+	err = error(generated.StructError{})
+}
+
+func variadicFunctionArg() {
 }
