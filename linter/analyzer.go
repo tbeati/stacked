@@ -19,7 +19,7 @@ const stackedImportPath = "github.com/tbeati/stacked"
 type Config struct {
 	PackagesTreatedAsExternal []string           `json:"packages-treated-as-external"`
 	IgnoredFunctions          []string           `json:"ignored-functions"`
-	CheckFunctionArguments    []FunctionArgument `json:"ignored-arguments"`
+	CheckFunctionArguments    []FunctionArgument `json:"check-function-arguments"`
 }
 
 type FunctionArgument struct {
@@ -64,7 +64,7 @@ func (c *Config) checkFunctionArgument(function string) int {
 		}
 	}
 
-	return -1
+	return -1 //TODO: panic ?
 }
 
 func NewAnalyzer(config *Config) *analysis.Analyzer {
@@ -89,15 +89,17 @@ func NewAnalyzer(config *Config) *analysis.Analyzer {
 	)
 
 	return &analysis.Analyzer{
-		Name:     "stacked",
-		Doc:      "check for error not wrapped with stacked",
-		Requires: []*analysis.Analyzer{inspect.Analyzer},
+		Name:             "stacked",
+		Doc:              "check for error not wrapped with stacked",
+		URL:              "https://github.com/tbeati/stacked",
+		RunDespiteErrors: false,
+		Requires:         []*analysis.Analyzer{inspect.Analyzer},
 		Run: func(pass *analysis.Pass) (interface{}, error) {
 			if config.isPackageTreatedAsExternal(pass.Pkg.Path()) {
 				return nil, nil
 			}
 
-			newAnalyzer(config, pass).check()
+			newAnalyzer(config, pass).analyze()
 
 			return nil, nil
 		},
@@ -118,8 +120,7 @@ func newAnalyzer(config *Config, pass *analysis.Pass) *analyzer {
 		ignoredLines[file] = make(map[int]struct{})
 		for _, commentGroup := range file.Comments {
 			for _, comment := range commentGroup.List {
-				directive, ok := ast.ParseDirective(comment.Pos(), comment.Text)
-				if ok && directive.Tool == "stacked" && directive.Name == "disable" {
+				if strings.Contains(comment.Text, "//stacked:disable") {
 					line := pass.Fset.Position(comment.Pos()).Line
 					ignoredLines[file][line] = struct{}{}
 				}
@@ -134,7 +135,7 @@ func newAnalyzer(config *Config, pass *analysis.Pass) *analyzer {
 	}
 }
 
-func (a *analyzer) check() {
+func (a *analyzer) analyze() {
 	astInspector := a.pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
 
 	astInspector.WithStack(nil, func(node ast.Node, push bool, stack []ast.Node) bool {
@@ -160,7 +161,7 @@ func (a *analyzer) check() {
 				}
 			}
 		case *ast.CallExpr:
-			if a.isWrapCall(node) {
+			if a.isStackedWrapCall(node) {
 				return true
 			}
 
@@ -193,9 +194,9 @@ func (a *analyzer) check() {
 				a.report(node.Value, a.isErrorExpectedInSend(node))
 			}
 		case *ast.RangeStmt:
-			shouldWrap, valueCount := a.shouldWrapIterator(node.X)
+			shouldWrap, returnValueCount := a.shouldWrapIterator(node.X) //TODO: handle autowrap
 			if shouldWrap {
-				a.reportIterator(node.X, valueCount)
+				a.reportIterator(node.X, returnValueCount)
 			}
 		}
 
@@ -211,13 +212,24 @@ func (a *analyzer) enclosingFunctionSignature() *types.Signature {
 	for i := len(a.stack) - 1; i >= 0; i-- {
 		switch fun := a.stack[i].(type) {
 		case *ast.FuncDecl:
-			return a.pass.TypesInfo.ObjectOf(fun.Name).Type().(*types.Signature)
+			return a.pass.TypesInfo.ObjectOf(fun.Name).Type().Underlying().(*types.Signature)
 		case *ast.FuncLit:
-			return a.pass.TypesInfo.TypeOf(fun.Type).(*types.Signature)
+			return a.pass.TypesInfo.TypeOf(fun.Type).Underlying().(*types.Signature)
 		}
 	}
 
 	return nil
+}
+
+func (a *analyzer) isErrorCheckCall(call *ast.CallExpr) (bool, int) {
+	isErrorCheckCall, functionName := a.isCalledFunctionInSet(call, a.config.isCheckFunction)
+	if !isErrorCheckCall {
+		return false, 0
+	}
+
+	argumentIndex := a.config.checkFunctionArgument(functionName) - 1
+
+	return true, argumentIndex
 }
 
 func (a *analyzer) checkGenDecl(stmt *ast.GenDecl) {
@@ -225,80 +237,79 @@ func (a *analyzer) checkGenDecl(stmt *ast.GenDecl) {
 		return
 	}
 
-SpecLoop:
 	for _, spec := range stmt.Specs {
-		valueSpec, ok := spec.(*ast.ValueSpec)
-		if !ok {
-			continue
-		}
+		valueSpec := spec.(*ast.ValueSpec)
 
 		if len(valueSpec.Values) == 0 {
 			continue
 		}
 
-		errCount := 0
-		for _, name := range valueSpec.Names {
-			if implementsError(a.pass.TypesInfo.TypeOf(name)) {
-				errCount++
-				if errCount > 1 {
-					a.pass.Reportf(stmt.Pos(), "assignment to multiple error variables")
-					continue SpecLoop
-				}
-			}
-		}
-
-		lsh := make([]ast.Expr, 0, len(valueSpec.Names))
+		lhs := make([]ast.Expr, 0, len(valueSpec.Names))
 		for _, ident := range valueSpec.Names {
-			lsh = append(lsh, ident)
+			lhs = append(lhs, ident)
 		}
 
-		a.checkAssignment(lsh, valueSpec.Values)
+		if a.multipleErrorsInAssigment(lhs, stmt.Pos()) {
+			continue
+		}
+
+		a.checkAssignment(lhs, valueSpec.Values)
 	}
 }
 
 func (a *analyzer) checkAssignStmt(stmt *ast.AssignStmt) {
-	errCount := 0
-	for _, expr := range stmt.Lhs {
-		exprType := a.pass.TypesInfo.TypeOf(expr)
-		if exprType != nil && implementsError(exprType) {
-			errCount++
-			if errCount > 1 {
-				a.pass.Reportf(stmt.Pos(), "assignment to multiple error variables")
-				return
-			}
-		}
+	if a.multipleErrorsInAssigment(stmt.Lhs, stmt.Pos()) {
+		return
 	}
 
 	a.checkAssignment(stmt.Lhs, stmt.Rhs)
 }
 
-func (a *analyzer) checkAssignment(lsh, rsh []ast.Expr) {
-	if len(lsh) == len(rsh) {
-		for i := range lsh {
-			if !isBlankIdent(lsh[i]) && a.shouldWrap(rsh[i]) {
-				a.report(ast.Unparen(rsh[i]), isError(a.pass.TypesInfo.TypeOf(lsh[i])))
+func (a *analyzer) multipleErrorsInAssigment(lhs []ast.Expr, assignPos token.Pos) bool {
+	errCount := 0
+	for _, expr := range lhs {
+		exprType := a.pass.TypesInfo.TypeOf(expr)
+		if exprType != nil && implementsError(exprType) {
+			errCount++
+			if errCount > 1 {
+				a.pass.Reportf(assignPos, "assignment to multiple error variables")
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+func (a *analyzer) checkAssignment(lhs, rhs []ast.Expr) {
+	if len(lhs) == len(rhs) {
+		for i := range lhs {
+			if !isBlankIdent(lhs[i]) && a.shouldWrap(rhs[i]) {
+				a.report(rhs[i], isError(a.pass.TypesInfo.TypeOf(lhs[i])))
 				return
 			}
 		}
 	} else {
-		call, ok := ast.Unparen(rsh[0]).(*ast.CallExpr)
-		if !ok {
-			return
-		}
-
-		if a.shouldWrap(call) {
-			assignedErrorDst := ast.Unparen(lsh[a.errorReturnIndex(call)])
-			if !isBlankIdent(assignedErrorDst) {
-				a.report(call, isError(a.pass.TypesInfo.TypeOf(assignedErrorDst)))
+		switch rhs := ast.Unparen(rhs[0]).(type) {
+		case *ast.CallExpr:
+			if a.shouldWrap(rhs) {
+				assignedErrorVariable := lhs[a.errorReturnIndex(rhs)]
+				if !isBlankIdent(assignedErrorVariable) {
+					a.report(rhs, isError(a.pass.TypesInfo.TypeOf(assignedErrorVariable)))
+				}
+			}
+		case *ast.UnaryExpr:
+			if a.shouldWrap(rhs) && !isBlankIdent(lhs[0]) {
+				a.report(rhs, false)
 			}
 		}
 	}
 }
 
-func (a *analyzer) report(expr ast.Expr, autoWrap bool) {
+func (a *analyzer) report(expr ast.Expr, autoFixable bool) {
 	var msg string
-	valueCount := 1
-	errorReturnIndex := 0
+	isCallExprAutoFixable := false
+	returnValueCount := 1
 	isIteratorPull := false
 
 	expr = ast.Unparen(expr)
@@ -311,54 +322,40 @@ func (a *analyzer) report(expr ast.Expr, autoWrap bool) {
 		exprType := a.pass.TypesInfo.TypeOf(expr)
 		msg = fmt.Sprintf("%s literal is not wrapped with stacked", typeToString(exprType, a.pass.Pkg))
 	case *ast.UnaryExpr:
-		switch subExpr := expr.X.(type) {
+		switch subExpr := ast.Unparen(expr.X).(type) {
 		case *ast.CompositeLit:
 			exprType := a.pass.TypesInfo.TypeOf(subExpr)
 			msg = fmt.Sprintf("%s literal is not wrapped with stacked", typeToString(exprType, a.pass.Pkg))
 		default:
 			if expr.Op == token.ARROW {
-				msg = fmt.Sprintf("error received from %s is not wrapped with stacked", exprToString(expr.X))
-			} else {
-				msg = fmt.Sprintf("%s is not wrapped with stacked", exprToString(expr))
+				msg = fmt.Sprintf("error received from %s is not wrapped with stacked", exprToString(subExpr))
 			}
 		}
 	case *ast.CallExpr:
+		fun := ast.Unparen(expr.Fun)
 		if a.isTypeConversion(expr) {
-			msg = fmt.Sprintf("value converted to error type %s is not wrapped with stacked", exprToString(expr.Fun))
+			msg = fmt.Sprintf("value converted to error type %s is not wrapped with stacked", exprToString(fun))
 		} else {
-			msg = fmt.Sprintf("error returned by %s is not wrapped with stacked", exprToString(expr.Fun))
-			isIteratorPull, valueCount = a.returnValueCount(expr)
-			errorReturnIndex = a.errorReturnIndex(expr)
+			msg = fmt.Sprintf("error returned by %s is not wrapped with stacked", exprToString(fun))
+			isCallExprAutoFixable, isIteratorPull, returnValueCount = a.isCallExprAutoFixable(expr)
 		}
 	}
 
 	var suggestedFixes []analysis.SuggestedFix
-	if autoWrap && valueCount <= 5 && (isIteratorPull || errorReturnIndex == valueCount-1) {
+	if autoFixable && isCallExprAutoFixable {
 		wrapPull := ""
 		if isIteratorPull {
 			wrapPull = "Pull"
 		}
 
 		wrapValueCountString := ""
-		if valueCount > 1 {
-			wrapValueCountString = strconv.Itoa(valueCount)
+		if returnValueCount > 1 {
+			wrapValueCountString = strconv.Itoa(returnValueCount)
 		}
 
 		wrapFuncName := fmt.Sprintf("stacked.Wrap%s%s", wrapPull, wrapValueCountString)
 
-		suggestedFixes = []analysis.SuggestedFix{{
-			Message: fmt.Sprintf("Wrap with %s", wrapFuncName),
-			TextEdits: []analysis.TextEdit{{
-				Pos:     expr.Pos(),
-				End:     expr.End(),
-				NewText: []byte(fmt.Sprintf("%s(%s)", wrapFuncName, exprToString(expr))),
-			}},
-		}}
-
-		addMissingImport := addMissingStackedImport(a.currentFile())
-		if addMissingImport != nil {
-			suggestedFixes[0].TextEdits = append(suggestedFixes[0].TextEdits, *addMissingImport)
-		}
+		suggestedFixes = a.suggestedFixes(expr, wrapFuncName)
 	}
 
 	a.pass.Report(analysis.Diagnostic{
@@ -368,7 +365,7 @@ func (a *analyzer) report(expr ast.Expr, autoWrap bool) {
 	})
 }
 
-func (a *analyzer) reportIterator(expr ast.Expr, valueCount int) {
+func (a *analyzer) reportIterator(expr ast.Expr, returnValueCount int) {
 	var msg string
 
 	expr = ast.Unparen(expr)
@@ -377,42 +374,31 @@ func (a *analyzer) reportIterator(expr ast.Expr, valueCount int) {
 		msg = fmt.Sprintf("iterator literal is not wrapped with stacked")
 	case *ast.UnaryExpr:
 		if expr.Op == token.ARROW {
-			msg = fmt.Sprintf("iterator received from %s is not wrapped with stacked", exprToString(expr.X))
+			msg = fmt.Sprintf("iterator received from %s is not wrapped with stacked", exprToString(ast.Unparen(expr.X)))
 		} else {
 			msg = fmt.Sprintf("%s is not wrapped with stacked", exprToString(expr))
 		}
 	case *ast.CallExpr:
+		fun := ast.Unparen(expr.Fun)
 		if a.isTypeConversion(expr) {
-			msg = fmt.Sprintf("value converted to iterator type %s is not wrapped with stacked", exprToString(expr.Fun))
+			msg = fmt.Sprintf("value converted to iterator type %s is not wrapped with stacked", exprToString(fun))
 		} else {
-			msg = fmt.Sprintf("iterator returned by %s is not wrapped with stacked", exprToString(expr.Fun))
+			msg = fmt.Sprintf("iterator returned by %s is not wrapped with stacked", exprToString(fun))
 		}
 	default:
 		msg = fmt.Sprintf("%s is not wrapped with stacked", exprToString(expr))
 	}
 
 	var suggestedFixes []analysis.SuggestedFix
-	if valueCount <= 2 {
+	if returnValueCount <= 2 {
 		wrapValueCountString := ""
-		if valueCount > 1 {
-			wrapValueCountString = strconv.Itoa(valueCount)
+		if returnValueCount > 1 {
+			wrapValueCountString = strconv.Itoa(returnValueCount)
 		}
 
 		wrapFuncName := fmt.Sprintf("stacked.WrapSeq%s", wrapValueCountString)
 
-		suggestedFixes = []analysis.SuggestedFix{{
-			Message: fmt.Sprintf("Wrap with %s", wrapFuncName),
-			TextEdits: []analysis.TextEdit{{
-				Pos:     expr.Pos(),
-				End:     expr.End(),
-				NewText: []byte(fmt.Sprintf("%s(%s)", wrapFuncName, exprToString(expr))),
-			}},
-		}}
-
-		addMissingImport := addMissingStackedImport(a.currentFile())
-		if addMissingImport != nil {
-			suggestedFixes[0].TextEdits = append(suggestedFixes[0].TextEdits, *addMissingImport)
-		}
+		suggestedFixes = a.suggestedFixes(expr, wrapFuncName)
 	}
 
 	a.pass.Report(analysis.Diagnostic{
@@ -420,6 +406,24 @@ func (a *analyzer) reportIterator(expr ast.Expr, valueCount int) {
 		Message:        msg,
 		SuggestedFixes: suggestedFixes,
 	})
+}
+
+func (a *analyzer) suggestedFixes(expr ast.Expr, wrapFuncName string) []analysis.SuggestedFix {
+	suggestedFixes := []analysis.SuggestedFix{{
+		Message: fmt.Sprintf("Wrap with %s", wrapFuncName),
+		TextEdits: []analysis.TextEdit{{
+			Pos:     expr.Pos(),
+			End:     expr.End(),
+			NewText: []byte(fmt.Sprintf("%s(%s)", wrapFuncName, exprToString(expr))),
+		}},
+	}}
+
+	addMissingImport := addMissingStackedImport(a.currentFile())
+	if addMissingImport != nil {
+		suggestedFixes[0].TextEdits = append(suggestedFixes[0].TextEdits, *addMissingImport)
+	}
+
+	return suggestedFixes
 }
 
 func addMissingStackedImport(file *ast.File) *analysis.TextEdit {
@@ -495,30 +499,33 @@ func (a *analyzer) shouldWrapCompositeLit(lit *ast.CompositeLit) bool {
 }
 
 func (a *analyzer) shouldWrapUnary(expr *ast.UnaryExpr) bool {
-	isLiteralOrChannelReceive := false
-	switch expr.X.(type) {
+	exprType := a.pass.TypesInfo.TypeOf(expr)
+
+	switch ast.Unparen(expr.X).(type) {
 	case *ast.CompositeLit:
-		isLiteralOrChannelReceive = true
+		return implementsError(exprType)
 	default:
 		if expr.Op == token.ARROW {
-			isLiteralOrChannelReceive = true
+			tuple, isTuple := exprType.Underlying().(*types.Tuple)
+			if isTuple {
+				return implementsError(tuple.At(0).Type())
+			}
+
+			return implementsError(exprType)
 		}
 	}
 
-	return isLiteralOrChannelReceive && implementsError(a.pass.TypesInfo.TypeOf(expr))
+	return false
 }
 
 func (a *analyzer) shouldWrapCall(call *ast.CallExpr) bool {
-	if a.isWrapCall(call) {
+	if a.isStackedWrapCall(call) {
 		return false
 	}
 
 	if a.isTypeConversion(call) {
-		return a.returnsError(call)
-	}
-
-	if isFunctionLiteral(call) {
-		return a.returnsError(call)
+		tv := a.pass.TypesInfo.Types[call.Args[0]]
+		return a.returnsError(call) && (tv.Value != nil || !implementsError(tv.Type))
 	}
 
 	if a.isInternalCall(call) {
@@ -532,93 +539,79 @@ func (a *analyzer) shouldWrapCall(call *ast.CallExpr) bool {
 	return a.returnsError(call)
 }
 
-func (a *analyzer) isWrapCall(call *ast.CallExpr) bool {
-	selector, ok := call.Fun.(*ast.SelectorExpr)
-	if !ok {
+func (a *analyzer) isStackedWrapCall(call *ast.CallExpr) bool {
+	var ident *ast.Ident
+	switch fun := ast.Unparen(call.Fun).(type) {
+	case *ast.SelectorExpr:
+		ident = fun.Sel
+	case *ast.Ident:
+		ident = fun
+	}
+
+	if ident == nil {
 		return false
 	}
 
-	wrapFunctions := map[string]struct{}{
-		"Wrap":      {},
-		"Wrap2":     {},
-		"Wrap3":     {},
-		"Wrap4":     {},
-		"Wrap5":     {},
-		"WrapSeq":   {},
-		"WrapSeq2":  {},
-		"WrapPull":  {},
-		"WrapPull2": {},
-	}
-	_, isWrapFunction := wrapFunctions[selector.Sel.Name]
-	if !isWrapFunction {
-		return false
-	}
-
-	ident, ok := selector.X.(*ast.Ident)
-	if !ok {
+	switch ident.Name {
+	case "Wrap", "Wrap2", "Wrap3", "Wrap4", "Wrap5", "WrapSeq", "WrapSeq2", "WrapPull", "WrapPull2":
+	default:
 		return false
 	}
 
 	obj := a.pass.TypesInfo.ObjectOf(ident)
 
-	pkg, ok := obj.(*types.PkgName)
-	if !ok {
+	_, isFunc := obj.(*types.Func)
+	if !isFunc {
 		return false
 	}
 
-	return pkg.Imported().Path() == stackedImportPath
-}
-
-func (a *analyzer) isTypeConversion(call *ast.CallExpr) bool {
-	callType, ok := a.pass.TypesInfo.Types[call.Fun]
-	return ok && callType.IsType()
+	return obj.Pkg() != nil && obj.Pkg().Path() == stackedImportPath
 }
 
 func (a *analyzer) isInternalCall(call *ast.CallExpr) bool {
-	switch fun := call.Fun.(type) {
-	case *ast.Ident:
-		obj := a.pass.TypesInfo.ObjectOf(fun)
-
-		_, isFunc := obj.(*types.Func)
-		if !isFunc {
-			return false
-		}
-
-		return obj.Pkg() != nil
+	var ident *ast.Ident
+	switch fun := ast.Unparen(call.Fun).(type) {
+	case *ast.FuncLit:
+		return true
 	case *ast.SelectorExpr:
-		obj := a.pass.TypesInfo.ObjectOf(fun.Sel)
-
 		sel := a.pass.TypesInfo.Selections[fun]
 		if sel != nil {
 			if sel.Kind() == types.FieldVal {
 				return false
 			}
 
-			recvType := sel.Recv()
-			_, isInterface := recvType.Underlying().(*types.Interface)
+			_, isInterface := sel.Recv().Underlying().(*types.Interface)
 			if isInterface {
 				return false
 			}
-		} else {
-			_, isFunc := obj.(*types.Func)
-			if !isFunc {
-				return false
-			}
 		}
 
-		pkg := obj.Pkg()
-		if pkg == nil {
-			return false
-		}
-
-		if a.config.isPackageTreatedAsExternal(pkg.Path()) {
-			return false
-		}
-
-		return strings.HasPrefix(pkg.Path(), a.pass.Module.Path)
+		ident = fun.Sel
+	case *ast.Ident:
+		ident = fun
 	}
 
-	return false
+	if ident == nil {
+		return false
+	}
+
+	obj := a.pass.TypesInfo.ObjectOf(ident)
+
+	_, isFunc := obj.(*types.Func)
+	if !isFunc {
+		return false
+	}
+
+	pkg := obj.Pkg()
+	if pkg == nil {
+		return false
+	}
+
+	if a.config.isPackageTreatedAsExternal(pkg.Path()) {
+		return false
+	}
+
+	return strings.HasPrefix(pkg.Path(), a.pass.Module.Path)
 }
 
 func (a *analyzer) isIgnoredCall(call *ast.CallExpr) bool {
@@ -640,9 +633,6 @@ func (a *analyzer) isFmtErrorfWithW(call *ast.CallExpr) bool {
 	}
 
 	obj := a.pass.TypesInfo.ObjectOf(ident)
-	if obj == nil {
-		return false
-	}
 
 	if obj.Pkg() == nil || obj.Pkg().Path() != "fmt" || obj.Name() != "Errorf" {
 		return false
@@ -653,8 +643,8 @@ func (a *analyzer) isFmtErrorfWithW(call *ast.CallExpr) bool {
 	}
 
 	formatArg := call.Args[0]
-	tv, ok := a.pass.TypesInfo.Types[formatArg]
-	if !ok || tv.Value == nil || tv.Value.Kind() != constant.String {
+	tv := a.pass.TypesInfo.Types[formatArg]
+	if tv.Value == nil || tv.Value.Kind() != constant.String {
 		return false
 	}
 
@@ -662,6 +652,7 @@ func (a *analyzer) isFmtErrorfWithW(call *ast.CallExpr) bool {
 
 	return containsWVerb(formatString)
 }
+
 func (a *analyzer) returnsError(call *ast.CallExpr) bool {
 	return a.errorReturnIndex(call) >= 0
 }
@@ -669,7 +660,7 @@ func (a *analyzer) returnsError(call *ast.CallExpr) bool {
 func (a *analyzer) errorReturnIndex(call *ast.CallExpr) int {
 	returnType := a.pass.TypesInfo.TypeOf(call)
 
-	tuple, ok := returnType.(*types.Tuple)
+	tuple, ok := returnType.Underlying().(*types.Tuple)
 	if ok {
 		for i := range tuple.Len() {
 			if implementsError(tuple.At(i).Type()) {
@@ -685,26 +676,30 @@ func (a *analyzer) errorReturnIndex(call *ast.CallExpr) int {
 	return -1
 }
 
-func (a *analyzer) returnValueCount(call *ast.CallExpr) (bool, int) {
+func (a *analyzer) isTypeConversion(call *ast.CallExpr) bool {
+	callType, ok := a.pass.TypesInfo.Types[call.Fun]
+	return ok && callType.IsType()
+}
+
+func (a *analyzer) isCallExprAutoFixable(call *ast.CallExpr) (isAutoFixable bool, isIteratorPull bool, returnValueCount int) {
 	callType := a.pass.TypesInfo.TypeOf(call)
 
-	tuple, ok := callType.(*types.Tuple)
+	tuple, ok := callType.Underlying().(*types.Tuple)
 	if ok {
 		if a.isIteratorPull(call) {
-			return true, tuple.Len() - 1
+			return true, true, tuple.Len() - 1
 		}
 
-		return false, tuple.Len()
+		errorReturnIndex := a.errorReturnIndex(call)
+		returnValueCount = tuple.Len()
+		return returnValueCount <= 5 && errorReturnIndex == returnValueCount-1, false, returnValueCount
 	}
 
-	return false, 1
+	return true, false, 1
 }
 
 func (a *analyzer) isIteratorPull(call *ast.CallExpr) bool {
 	funType := a.pass.TypesInfo.TypeOf(call.Fun)
-	if funType == nil {
-		return false
-	}
 
 	sig, ok := funType.Underlying().(*types.Signature)
 	if !ok {
@@ -730,17 +725,6 @@ func (a *analyzer) isIteratorPull(call *ast.CallExpr) bool {
 	return false
 }
 
-func (a *analyzer) isErrorCheckCall(call *ast.CallExpr) (bool, int) {
-	isErrorCheckCall, functionName := a.isCalledFunctionInSet(call, a.config.isCheckFunction)
-	if !isErrorCheckCall {
-		return false, 0
-	}
-
-	argumentIndex := a.config.checkFunctionArgument(functionName) - 1
-
-	return true, argumentIndex
-}
-
 func (a *analyzer) isCalledFunctionInSet(call *ast.CallExpr, isFunctionInSet func(function string) bool) (bool, string) {
 	var ident *ast.Ident
 	switch fun := ast.Unparen(call.Fun).(type) {
@@ -755,23 +739,20 @@ func (a *analyzer) isCalledFunctionInSet(call *ast.CallExpr, isFunctionInSet fun
 	}
 
 	obj := a.pass.TypesInfo.ObjectOf(ident)
-	if obj == nil {
-		return false, ""
-	}
 
-	fn, ok := obj.(*types.Func)
+	fun, ok := obj.(*types.Func)
 	if !ok {
 		return false, ""
 	}
 
-	pkg := fn.Pkg()
+	pkg := fun.Pkg()
 	if pkg == nil {
 		return false, ""
 	}
 
 	fullName := pkg.Path()
 
-	sig, ok := fn.Type().(*types.Signature)
+	sig, ok := fun.Type().(*types.Signature)
 	if ok && sig.Recv() != nil {
 		recvType := sig.Recv().Type()
 
@@ -787,7 +768,7 @@ func (a *analyzer) isCalledFunctionInSet(call *ast.CallExpr, isFunctionInSet fun
 		fullName += "." + named.Obj().Name()
 	}
 
-	fullName += "." + fn.Name()
+	fullName += "." + fun.Name()
 
 	return isFunctionInSet(fullName), fullName
 }
@@ -795,14 +776,12 @@ func (a *analyzer) isCalledFunctionInSet(call *ast.CallExpr, isFunctionInSet fun
 func (a *analyzer) shouldWrapIterator(expr ast.Expr) (bool, int) {
 	callExpr, isCall := expr.(*ast.CallExpr)
 	if isCall {
-		if a.isWrapCall(callExpr) {
+		if a.isStackedWrapCall(callExpr) {
 			return false, 0
 		}
 	}
 
-	exprType := a.pass.TypesInfo.TypeOf(expr)
-
-	sig, ok := types.Unalias(exprType).Underlying().(*types.Signature)
+	sig, ok := a.pass.TypesInfo.TypeOf(expr).Underlying().(*types.Signature)
 	if !ok {
 		return false, 0
 	}
@@ -811,7 +790,7 @@ func (a *analyzer) shouldWrapIterator(expr ast.Expr) (bool, int) {
 		return false, 0
 	}
 
-	yieldSig, ok := types.Unalias(sig.Params().At(0).Type()).Underlying().(*types.Signature)
+	yieldSig, ok := sig.Params().At(0).Type().Underlying().(*types.Signature)
 	if !ok {
 		return false, 0
 	}

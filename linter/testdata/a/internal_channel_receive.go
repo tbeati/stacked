@@ -6,13 +6,16 @@ import (
 
 func channelReceiveAssignmentInternal() {
 	var err error
-	_ = err
+	var ok bool
+	_, _ = err, ok
 
 	err = <-errChan // want "^error received from errChan is not wrapped with stacked$"
 	err = stacked.Wrap(<-errChan)
 
 	_, err = 0, <-errChan // want "^error received from errChan is not wrapped with stacked$"
 	_, err = 0, stacked.Wrap(<-errChan)
+
+	err, ok = <-errChan // want "^error received from errChan is not wrapped with stacked$"
 }
 
 func channelReceiveDeclarationInternal() {
@@ -33,6 +36,11 @@ func channelReceiveDeclarationInternal() {
 		var _, err = 0, stacked.Wrap(<-errChan)
 		_ = err
 	}
+
+	{
+		var err, ok = <-errChan // want "^error received from errChan is not wrapped with stacked$"
+		_, _ = err, ok
+	}
 }
 
 func channelReceiveShortDeclarationInternal() {
@@ -52,6 +60,11 @@ func channelReceiveShortDeclarationInternal() {
 	{
 		_, err := 0, stacked.Wrap(<-errChan)
 		_ = err
+	}
+
+	{
+		err, ok := <-errChan // want "^error received from errChan is not wrapped with stacked$"
+		_, _ = err, ok
 	}
 }
 

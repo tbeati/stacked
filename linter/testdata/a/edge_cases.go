@@ -1,6 +1,8 @@
 package a
 
 import (
+	"errors"
+	"io/fs"
 	"os"
 
 	"github.com/tbeati/stacked"
@@ -67,7 +69,7 @@ func complexExpressions() {
 	err = funcStructFieldExpr[0].f() // want "^error returned by funcStructFieldExpr\\[0\\]\\.f is not wrapped with stacked$"
 	err = stacked.Wrap(funcStructFieldExpr[0].f())
 
-	funcSliceExpr := []func() error{}
+	var funcSliceExpr []func() error
 	err = funcSliceExpr[0]() // want "^error returned by funcSliceExpr\\[0\\] is not wrapped with stacked$"
 	err = stacked.Wrap(funcSliceExpr[0]())
 
@@ -77,7 +79,7 @@ func complexExpressions() {
 	err = <-chanStructFieldExpr[0].c // want "^error received from chanStructFieldExpr\\[0\\]\\.c is not wrapped with stacked$"
 	err = stacked.Wrap(<-chanStructFieldExpr[0].c)
 
-	chanSliceExpr := []chan error{}
+	var chanSliceExpr []chan error
 	err = <-chanSliceExpr[0] // want "^error received from chanSliceExpr\\[0\\] is not wrapped with stacked$"
 	err = stacked.Wrap(<-chanSliceExpr[0])
 }
@@ -93,8 +95,42 @@ func typeConversionArg() {
 	var err error
 	_ = err
 
-	err = error(generated.StructError{})
+	err = error(generated.StructError{}) // want "^generated.StructError literal is not wrapped with stacked$"
+}
+
+func variadic(err ...error) {
 }
 
 func variadicFunctionArg() {
+	variadic(errors.New("")) // want "^error returned by errors.New is not wrapped with stacked$"
+}
+
+func alternativeGenDecl() {
+	const err = "error"
+	type t struct{}
+}
+
+func multiErrorDeclarations() {
+	var err1, err2 = errors.New("error"), errors.New("error") // want "^assignment to multiple error variables$"
+	err3, err4 := errors.New("error"), errors.New("error")    // want "^assignment to multiple error variables$"
+	err4, err3, err2, err1 = err1, err2, err3, err4           // want "^assignment to multiple error variables$"
+	_, _, _, _ = err1, err2, err3, err4
+}
+
+func innerParenthesis() {
+	var err error
+	_ = err
+
+	err = <-(errChan)                    // want "^error received from errChan is not wrapped with stacked$"
+	err = &(fs.PathError{Path: "error"}) // want "^fs.PathError literal is not wrapped with stacked$"
+	err = (os.Chdir)("/")                // want "^error returned by os.Chdir is not wrapped with stacked$"
+}
+
+func functionLiteral() {
+	var err error
+	_ = err
+
+	err = func() error {
+		return err
+	}()
 }

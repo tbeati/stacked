@@ -9,18 +9,20 @@ import (
 	"strings"
 )
 
-var errorType *types.Interface
+var errorType types.Type
+var errorTypeInterface *types.Interface
 
 func init() {
-	errorType = types.Universe.Lookup("error").Type().Underlying().(*types.Interface)
+	errorType = types.Universe.Lookup("error").Type()
+	errorTypeInterface = types.Universe.Lookup("error").Type().Underlying().(*types.Interface)
 }
 
 func implementsError(t types.Type) bool {
-	return types.Implements(t, errorType)
+	return types.Implements(t, errorTypeInterface)
 }
 
 func isError(t types.Type) bool {
-	return t.String() == "error"
+	return types.Identical(t, errorType)
 }
 
 func isBool(t types.Type) bool {
@@ -30,11 +32,6 @@ func isBool(t types.Type) bool {
 func isBlankIdent(expr ast.Expr) bool {
 	ident, ok := ast.Unparen(expr).(*ast.Ident)
 	return ok && ident.Name == "_"
-}
-
-func isFunctionLiteral(call *ast.CallExpr) bool {
-	_, isFuncLit := call.Fun.(*ast.FuncLit)
-	return isFuncLit
 }
 
 func exprToString(expr ast.Expr) string {

@@ -13,6 +13,7 @@ func assignmentIgnoredFunction() {
 	_ = err
 
 	err = generated.SingleReturn() //stacked:disable
+	err = generated.SingleReturn() // other comment //stacked:disable
 
 	err = generated.IgnoredFunction(err)
 
