@@ -9,10 +9,10 @@ func channelReceiveAssignmentInternal() {
 	var ok bool
 	_, _ = err, ok
 
-	err = stacked.Wrap(<-errChan)
+	err = stacked.Wrap(<-errChan) // want "^error received from errChan is not wrapped with stacked$"
 	err = stacked.Wrap(<-errChan)
 
-	_, err = 0, stacked.Wrap(<-errChan)
+	_, err = 0, stacked.Wrap(<-errChan) // want "^error received from errChan is not wrapped with stacked$"
 	_, err = 0, stacked.Wrap(<-errChan)
 
 	err, ok = <-errChan // want "^error received from errChan is not wrapped with stacked$"
@@ -20,7 +20,7 @@ func channelReceiveAssignmentInternal() {
 
 func channelReceiveDeclarationInternal() {
 	{
-		var err = stacked.Wrap(<-errChan)
+		var err = stacked.Wrap(<-errChan) // want "^error received from errChan is not wrapped with stacked$"
 		_ = err
 	}
 	{
@@ -29,7 +29,7 @@ func channelReceiveDeclarationInternal() {
 	}
 
 	{
-		var _, err = 0, stacked.Wrap(<-errChan)
+		var _, err = 0, stacked.Wrap(<-errChan) // want "^error received from errChan is not wrapped with stacked$"
 		_ = err
 	}
 	{
@@ -45,7 +45,7 @@ func channelReceiveDeclarationInternal() {
 
 func channelReceiveShortDeclarationInternal() {
 	{
-		err := stacked.Wrap(<-errChan)
+		err := stacked.Wrap(<-errChan) // want "^error received from errChan is not wrapped with stacked$"
 		_ = err
 	}
 	{
@@ -54,7 +54,7 @@ func channelReceiveShortDeclarationInternal() {
 	}
 
 	{
-		_, err := 0, stacked.Wrap(<-errChan)
+		_, err := 0, stacked.Wrap(<-errChan) // want "^error received from errChan is not wrapped with stacked$"
 		_ = err
 	}
 	{
@@ -69,38 +69,38 @@ func channelReceiveShortDeclarationInternal() {
 }
 
 func channelReceiveReturn1Internal() error {
-	return stacked.Wrap(<-errChan)
+	return stacked.Wrap(<-errChan) // want "^error received from errChan is not wrapped with stacked$"
 	return stacked.Wrap(<-errChan)
 }
 
 func channelReceiveReturn2Internal() (int, error) {
-	return 0, stacked.Wrap(<-errChan)
+	return 0, stacked.Wrap(<-errChan) // want "^error received from errChan is not wrapped with stacked$"
 	return 0, stacked.Wrap(<-errChan)
 }
 
 func channelReceiveArgumentInternal() {
-	functionWithIntErrorArgument(0, stacked.Wrap(<-errChan))
+	functionWithIntErrorArgument(0, stacked.Wrap(<-errChan)) // want "^error received from errChan is not wrapped with stacked$"
 	functionWithIntErrorArgument(0, stacked.Wrap(<-errChan))
 }
 
 func channelReceiveCompositeLiteralInternal() {
 	_ = structWithErrorField{
-		err: stacked.Wrap(<-errChan),
+		err: stacked.Wrap(<-errChan), // want "^error received from errChan is not wrapped with stacked$"
 	}
 	_ = structWithErrorField{
 		err: stacked.Wrap(<-errChan),
 	}
 
-	_ = []error{stacked.Wrap(<-errChan)}
+	_ = []error{stacked.Wrap(<-errChan)} // want "^error received from errChan is not wrapped with stacked$"
 	_ = []error{stacked.Wrap(<-errChan)}
 
-	_ = map[string]error{"": stacked.Wrap(<-errChan)}
+	_ = map[string]error{"": stacked.Wrap(<-errChan)} // want "^error received from errChan is not wrapped with stacked$"
 	_ = map[string]error{"": stacked.Wrap(<-errChan)}
 }
 
 func channelReceiveChannelSendInternal() {
 	var errChan chan error
 
-	errChan <- stacked.Wrap(<-errChan)
+	errChan <- stacked.Wrap(<-errChan) // want "^error received from errChan is not wrapped with stacked$"
 	errChan <- stacked.Wrap(<-errChan)
 }

@@ -16,7 +16,7 @@ func Test(t *testing.T) {
 		},
 	}
 
-	analysistest.Run(t, analysistest.TestData(), NewAnalyzer(&config),
+	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), NewAnalyzer(&config),
 		"testdata/a",
 		"testdata/generated",
 	)

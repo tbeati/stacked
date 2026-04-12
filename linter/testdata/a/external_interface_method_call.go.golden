@@ -11,13 +11,13 @@ func externalInterfaceMethodCallAssignmentExternal() {
 	_ = err
 	var file fs.File
 
-	err = stacked.Wrap(file.Close())
+	err = stacked.Wrap(file.Close()) // want "^error returned by file.Close is not wrapped with stacked$"
 	err = stacked.Wrap(file.Close())
 
-	_, err = 0, stacked.Wrap(file.Close())
+	_, err = 0, stacked.Wrap(file.Close()) // want "^error returned by file.Close is not wrapped with stacked$"
 	_, err = 0, stacked.Wrap(file.Close())
 
-	_, err = stacked.Wrap2(file.Stat())
+	_, err = stacked.Wrap2(file.Stat()) // want "^error returned by file.Stat is not wrapped with stacked$"
 	_, err = stacked.Wrap2(file.Stat())
 }
 
@@ -25,7 +25,7 @@ func externalInterfaceMethodCallDeclarationExternal() {
 	var file fs.File
 
 	{
-		var err = stacked.Wrap(file.Close())
+		var err = stacked.Wrap(file.Close()) // want "^error returned by file.Close is not wrapped with stacked$"
 		_ = err
 	}
 	{
@@ -34,7 +34,7 @@ func externalInterfaceMethodCallDeclarationExternal() {
 	}
 
 	{
-		var _, err = 0, stacked.Wrap(file.Close())
+		var _, err = 0, stacked.Wrap(file.Close()) // want "^error returned by file.Close is not wrapped with stacked$"
 		_ = err
 	}
 	{
@@ -43,7 +43,7 @@ func externalInterfaceMethodCallDeclarationExternal() {
 	}
 
 	{
-		var _, err = stacked.Wrap2(file.Stat())
+		var _, err = stacked.Wrap2(file.Stat()) // want "^error returned by file.Stat is not wrapped with stacked$"
 		_ = err
 	}
 	{
@@ -56,7 +56,7 @@ func externalInterfaceMethodCallShortDeclarationExternal() {
 	var file fs.File
 
 	{
-		err := stacked.Wrap(file.Close())
+		err := stacked.Wrap(file.Close()) // want "^error returned by file.Close is not wrapped with stacked$"
 		_ = err
 	}
 	{
@@ -65,7 +65,7 @@ func externalInterfaceMethodCallShortDeclarationExternal() {
 	}
 
 	{
-		_, err := 0, stacked.Wrap(file.Close())
+		_, err := 0, stacked.Wrap(file.Close()) // want "^error returned by file.Close is not wrapped with stacked$"
 		_ = err
 	}
 	{
@@ -74,7 +74,7 @@ func externalInterfaceMethodCallShortDeclarationExternal() {
 	}
 
 	{
-		_, err := stacked.Wrap2(file.Stat())
+		_, err := stacked.Wrap2(file.Stat()) // want "^error returned by file.Stat is not wrapped with stacked$"
 		_ = err
 	}
 	{
@@ -86,30 +86,30 @@ func externalInterfaceMethodCallShortDeclarationExternal() {
 func externalInterfaceMethodCallReturn1External() error {
 	var file fs.File
 
-	return stacked.Wrap(file.Close())
+	return stacked.Wrap(file.Close()) // want "^error returned by file.Close is not wrapped with stacked$"
 	return stacked.Wrap(file.Close())
 }
 
 func externalInterfaceMethodCallReturn2External() (fs.FileInfo, error) {
 	var file fs.File
 
-	return nil, stacked.Wrap(file.Close())
+	return nil, stacked.Wrap(file.Close()) // want "^error returned by file.Close is not wrapped with stacked$"
 	return nil, stacked.Wrap(file.Close())
 
-	return stacked.Wrap2(file.Stat())
+	return stacked.Wrap2(file.Stat()) // want "^error returned by file.Stat is not wrapped with stacked$"
 	return stacked.Wrap2(file.Stat())
 }
 
 func externalInterfaceMethodCallArgumentExternal() {
 	var file fs.File
 
-	functionWithErrorArgument(stacked.Wrap(file.Close()))
+	functionWithErrorArgument(stacked.Wrap(file.Close())) // want "^error returned by file.Close is not wrapped with stacked$"
 	functionWithErrorArgument(stacked.Wrap(file.Close()))
 
-	functionWithFileErrorArgument(nil, stacked.Wrap(file.Close()))
+	functionWithFileErrorArgument(nil, stacked.Wrap(file.Close())) // want "^error returned by file.Close is not wrapped with stacked$"
 	functionWithFileErrorArgument(nil, stacked.Wrap(file.Close()))
 
-	functionWithFileInfoErrorArgument(stacked.Wrap2(file.Stat()))
+	functionWithFileInfoErrorArgument(stacked.Wrap2(file.Stat())) // want "^error returned by file.Stat is not wrapped with stacked$"
 	functionWithFileInfoErrorArgument(stacked.Wrap2(file.Stat()))
 }
 
@@ -117,16 +117,16 @@ func externalInterfaceMethodCallCompositeLiteralExternal() {
 	var file fs.File
 
 	_ = structWithErrorField{
-		err: stacked.Wrap(file.Close()),
+		err: stacked.Wrap(file.Close()), // want "^error returned by file.Close is not wrapped with stacked$"
 	}
 	_ = structWithErrorField{
 		err: stacked.Wrap(file.Close()),
 	}
 
-	_ = []error{stacked.Wrap(file.Close())}
+	_ = []error{stacked.Wrap(file.Close())} // want "^error returned by file.Close is not wrapped with stacked$"
 	_ = []error{stacked.Wrap(file.Close())}
 
-	_ = map[string]error{"": stacked.Wrap(file.Close())}
+	_ = map[string]error{"": stacked.Wrap(file.Close())} // want "^error returned by file.Close is not wrapped with stacked$"
 	_ = map[string]error{"": stacked.Wrap(file.Close())}
 }
 
@@ -134,7 +134,7 @@ func externalInterfaceMethodCallChannelSendExternal() {
 	var errChan chan error
 	var file fs.File
 
-	errChan <- stacked.Wrap(file.Close())
+	errChan <- stacked.Wrap(file.Close()) // want "^error returned by file.Close is not wrapped with stacked$"
 	errChan <- stacked.Wrap(file.Close())
 }
 

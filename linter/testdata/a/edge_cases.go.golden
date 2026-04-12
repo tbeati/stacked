@@ -14,7 +14,7 @@ var errTopLevel = generated.ErrGlobal
 func multiDeclarations() {
 	{
 		var (
-			err        = stacked.Wrap(os.Chdir("/"))
+			err        = stacked.Wrap(os.Chdir("/")) // want "^error returned by os.Chdir is not wrapped with stacked$"
 			_, _       = 0, ""
 			err1, err2 error
 		)
@@ -31,7 +31,7 @@ func multiDeclarations() {
 
 	{
 		var (
-			_, err     = stacked.Wrap2(os.Open(""))
+			_, err     = stacked.Wrap2(os.Open("")) // want "^error returned by os.Open is not wrapped with stacked$"
 			_, _       = 0, ""
 			err1, err2 error
 		)
@@ -48,12 +48,12 @@ func multiDeclarations() {
 }
 
 func conditionDeclarations() {
-	if err := stacked.Wrap(os.Chdir("/")); err != nil {
+	if err := stacked.Wrap(os.Chdir("/")); err != nil { // want "^error returned by os.Chdir is not wrapped with stacked$"
 	}
 	if err := stacked.Wrap(os.Chdir("/")); err != nil {
 	}
 
-	switch err := stacked.Wrap(os.Chdir("/")); err {
+	switch err := stacked.Wrap(os.Chdir("/")); err { // want "^error returned by os.Chdir is not wrapped with stacked$"
 	}
 	switch err := stacked.Wrap(os.Chdir("/")); err {
 	}
@@ -66,21 +66,21 @@ func complexExpressions() {
 	var funcStructFieldExpr []struct {
 		f func() error
 	}
-	err = stacked.Wrap(funcStructFieldExpr[0].f())
+	err = stacked.Wrap(funcStructFieldExpr[0].f()) // want "^error returned by funcStructFieldExpr\\[0\\]\\.f is not wrapped with stacked$"
 	err = stacked.Wrap(funcStructFieldExpr[0].f())
 
 	var funcSliceExpr []func() error
-	err = stacked.Wrap(funcSliceExpr[0]())
+	err = stacked.Wrap(funcSliceExpr[0]()) // want "^error returned by funcSliceExpr\\[0\\] is not wrapped with stacked$"
 	err = stacked.Wrap(funcSliceExpr[0]())
 
 	var chanStructFieldExpr []struct {
 		c chan error
 	}
-	err = stacked.Wrap(<-chanStructFieldExpr[0].c)
+	err = stacked.Wrap(<-chanStructFieldExpr[0].c) // want "^error received from chanStructFieldExpr\\[0\\]\\.c is not wrapped with stacked$"
 	err = stacked.Wrap(<-chanStructFieldExpr[0].c)
 
 	var chanSliceExpr []chan error
-	err = stacked.Wrap(<-chanSliceExpr[0])
+	err = stacked.Wrap(<-chanSliceExpr[0]) // want "^error received from chanSliceExpr\\[0\\] is not wrapped with stacked$"
 	err = stacked.Wrap(<-chanSliceExpr[0])
 }
 
@@ -88,7 +88,7 @@ func newError() {
 	var err error
 	_ = err
 
-	err = stacked.Wrap(new(generated.StructError))
+	err = stacked.Wrap(new(generated.StructError)) // want "^error returned by new is not wrapped with stacked$"
 	err = stacked.Wrap(new(generated.StructError))
 }
 
@@ -96,14 +96,14 @@ func typeConversionArg() {
 	var err error
 	_ = err
 
-	err = error(stacked.Wrap(generated.StructError{}))
+	err = error(stacked.Wrap(generated.StructError{})) // want "^generated.StructError literal is not wrapped with stacked$"
 }
 
 func variadic(err ...error) {
 }
 
 func variadicFunctionArg() {
-	variadic(stacked.Wrap(errors.New("")))
+	variadic(stacked.Wrap(errors.New(""))) // want "^error returned by errors.New is not wrapped with stacked$"
 	variadic(stacked.Wrap(errors.New("")))
 }
 
@@ -123,11 +123,11 @@ func innerParenthesis() {
 	var err error
 	_ = err
 
+	err = stacked.Wrap(<-(errChan)) // want "^error received from errChan is not wrapped with stacked$"
 	err = stacked.Wrap(<-(errChan))
-	err = stacked.Wrap(<-(errChan))
+	err = stacked.Wrap(&(fs.PathError{Path: "error"})) // want "^fs.PathError literal is not wrapped with stacked$"
 	err = stacked.Wrap(&(fs.PathError{Path: "error"}))
-	err = stacked.Wrap(&(fs.PathError{Path: "error"}))
-	err = stacked.Wrap((os.Chdir)("/"))
+	err = stacked.Wrap((os.Chdir)("/")) // want "^error returned by os.Chdir is not wrapped with stacked$"
 	err = stacked.Wrap((os.Chdir)("/"))
 }
 

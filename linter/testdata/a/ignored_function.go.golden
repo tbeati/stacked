@@ -1,11 +1,12 @@
 package a
 
+import "github.com/tbeati/stacked"
+
 import (
 	"errors"
 	"fmt"
 	"io/fs"
 
-	"github.com/tbeati/stacked"
 	"testdata/generated"
 )
 
@@ -23,10 +24,10 @@ func assignmentIgnoredFunction() {
 	err = (&s).IgnoredMethod(err)
 
 	var i generated.IgnoredInterface
-	err = stacked.Wrap(i.IgnoredMethod())
+	err = i.IgnoredMethod()
 
 	err = fmt.Errorf("wrapping %w", err)
-	err = stacked.Wrap(fmt.Errorf("not wrapping"))
+	err = stacked.Wrap(fmt.Errorf("not wrapping")) // want "^error returned by fmt.Errorf is not wrapped with stacked$"
 
 	err = errors.Join(err)
 	err = errors.Unwrap(err)

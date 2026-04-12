@@ -179,14 +179,14 @@ func (a *analyzer) analyze() {
 			}
 		case *ast.CompositeLit:
 			for i, elt := range node.Elts {
-				switch elt := ast.Unparen(elt).(type) {
+				switch unparenElt := ast.Unparen(elt).(type) {
 				case *ast.KeyValueExpr:
-					if a.shouldWrap(elt.Value) {
-						a.report(elt.Value, a.isErrorExpectedInLit(node, elt, i))
+					if a.shouldWrap(unparenElt.Value) {
+						a.report(unparenElt.Value, a.isErrorExpectedInLit(node, unparenElt, i))
 					}
 				default:
 					if a.shouldWrap(elt) {
-						a.report(elt, a.isErrorExpectedInLit(node, elt, i))
+						a.report(elt, a.isErrorExpectedInLit(node, unparenElt, i))
 					}
 				}
 			}
@@ -291,17 +291,17 @@ func (a *analyzer) checkAssignment(lhs, rhs []ast.Expr) {
 			}
 		}
 	} else {
-		switch rhs := ast.Unparen(rhs[0]).(type) {
+		switch unparenRhs := ast.Unparen(rhs[0]).(type) {
 		case *ast.CallExpr:
-			if a.shouldWrap(rhs) {
-				assignedErrorVariable := lhs[a.errorReturnIndex(rhs)]
+			if a.shouldWrap(rhs[0]) {
+				assignedErrorVariable := lhs[a.errorReturnIndex(unparenRhs)]
 				if !isBlankIdent(assignedErrorVariable) {
-					a.report(rhs, isError(a.pass.TypesInfo.TypeOf(assignedErrorVariable)))
+					a.report(rhs[0], isError(a.pass.TypesInfo.TypeOf(assignedErrorVariable)))
 				}
 			}
 		case *ast.UnaryExpr:
-			if a.shouldWrap(rhs) && !isBlankIdent(lhs[0]) {
-				a.report(rhs, false)
+			if a.shouldWrap(rhs[0]) && !isBlankIdent(lhs[0]) {
+				a.report(rhs[0], false)
 			}
 		}
 	}
