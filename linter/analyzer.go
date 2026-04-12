@@ -20,11 +20,26 @@ type Config struct {
 	PackagesTreatedAsExternal []string           `json:"packages-treated-as-external"`
 	IgnoredFunctions          []string           `json:"ignored-functions"`
 	CheckFunctionArguments    []FunctionArgument `json:"check-function-arguments"`
+
+	ignoredFunctionsMap       map[string]struct{}
+	checkFunctionArgumentsMap map[string]int
 }
 
 type FunctionArgument struct {
 	Function string
 	Argument int
+}
+
+func (c *Config) init() {
+	c.ignoredFunctionsMap = make(map[string]struct{}, len(c.IgnoredFunctions))
+	for _, fun := range c.IgnoredFunctions {
+		c.ignoredFunctionsMap[fun] = struct{}{}
+	}
+
+	c.checkFunctionArgumentsMap = make(map[string]int, len(c.CheckFunctionArguments))
+	for _, checkFun := range c.CheckFunctionArguments {
+		c.checkFunctionArgumentsMap[checkFun.Function] = checkFun.Argument
+	}
 }
 
 func (c *Config) isPackageTreatedAsExternal(pkg string) bool {
@@ -38,33 +53,17 @@ func (c *Config) isPackageTreatedAsExternal(pkg string) bool {
 }
 
 func (c *Config) isIgnoredFunction(function string) bool {
-	for _, ignoredFunction := range c.IgnoredFunctions {
-		if function == ignoredFunction {
-			return true
-		}
-	}
-
-	return false
+	_, found := c.ignoredFunctionsMap[function]
+	return found
 }
 
 func (c *Config) isCheckFunction(function string) bool {
-	for _, checkFunction := range c.CheckFunctionArguments {
-		if function == checkFunction.Function {
-			return true
-		}
-	}
-
-	return false
+	_, exists := c.checkFunctionArgumentsMap[function]
+	return exists
 }
 
 func (c *Config) checkFunctionArgument(function string) int {
-	for _, checkFunctionArgument := range c.CheckFunctionArguments {
-		if function == checkFunctionArgument.Function {
-			return checkFunctionArgument.Argument
-		}
-	}
-
-	return -1 //TODO: panic ?
+	return c.checkFunctionArgumentsMap[function]
 }
 
 func NewAnalyzer(config *Config) *analysis.Analyzer {
@@ -87,6 +86,8 @@ func NewAnalyzer(config *Config) *analysis.Analyzer {
 			Argument: 2,
 		},
 	)
+
+	config.init()
 
 	return &analysis.Analyzer{
 		Name:             "stacked",
@@ -194,9 +195,9 @@ func (a *analyzer) analyze() {
 				a.report(node.Value, a.isErrorExpectedInSend(node))
 			}
 		case *ast.RangeStmt:
-			shouldWrap, returnValueCount := a.shouldWrapIterator(node.X) //TODO: handle autowrap
+			shouldWrap, autoFixable, returnValueCount := a.shouldWrapIterator(node.X)
 			if shouldWrap {
-				a.reportIterator(node.X, returnValueCount)
+				a.reportIterator(node.X, autoFixable, returnValueCount)
 			}
 		}
 
@@ -365,7 +366,7 @@ func (a *analyzer) report(expr ast.Expr, autoFixable bool) {
 	})
 }
 
-func (a *analyzer) reportIterator(expr ast.Expr, returnValueCount int) {
+func (a *analyzer) reportIterator(expr ast.Expr, autoFixable bool, returnValueCount int) {
 	var msg string
 
 	expr = ast.Unparen(expr)
@@ -390,7 +391,7 @@ func (a *analyzer) reportIterator(expr ast.Expr, returnValueCount int) {
 	}
 
 	var suggestedFixes []analysis.SuggestedFix
-	if returnValueCount <= 2 {
+	if autoFixable && returnValueCount <= 2 {
 		wrapValueCountString := ""
 		if returnValueCount > 1 {
 			wrapValueCountString = strconv.Itoa(returnValueCount)
@@ -681,7 +682,7 @@ func (a *analyzer) isTypeConversion(call *ast.CallExpr) bool {
 	return ok && callType.IsType()
 }
 
-func (a *analyzer) isCallExprAutoFixable(call *ast.CallExpr) (isAutoFixable bool, isIteratorPull bool, returnValueCount int) {
+func (a *analyzer) isCallExprAutoFixable(call *ast.CallExpr) (bool, bool, int) {
 	callType := a.pass.TypesInfo.TypeOf(call)
 
 	tuple, ok := callType.Underlying().(*types.Tuple)
@@ -691,7 +692,7 @@ func (a *analyzer) isCallExprAutoFixable(call *ast.CallExpr) (isAutoFixable bool
 		}
 
 		errorReturnIndex := a.errorReturnIndex(call)
-		returnValueCount = tuple.Len()
+		returnValueCount := tuple.Len()
 		return returnValueCount <= 5 && errorReturnIndex == returnValueCount-1, false, returnValueCount
 	}
 
@@ -773,48 +774,62 @@ func (a *analyzer) isCalledFunctionInSet(call *ast.CallExpr, isFunctionInSet fun
 	return isFunctionInSet(fullName), fullName
 }
 
-func (a *analyzer) shouldWrapIterator(expr ast.Expr) (bool, int) {
+func (a *analyzer) shouldWrapIterator(expr ast.Expr) (bool, bool, int) {
 	callExpr, isCall := expr.(*ast.CallExpr)
 	if isCall {
 		if a.isStackedWrapCall(callExpr) {
-			return false, 0
+			return false, false, 0
 		}
 	}
 
 	sig, ok := a.pass.TypesInfo.TypeOf(expr).Underlying().(*types.Signature)
 	if !ok {
-		return false, 0
+		return false, false, 0
 	}
 
 	if !(sig.Params().Len() == 1 && sig.Results().Len() == 0) {
-		return false, 0
+		return false, false, 0
 	}
 
 	yieldSig, ok := sig.Params().At(0).Type().Underlying().(*types.Signature)
 	if !ok {
-		return false, 0
+		return false, false, 0
 	}
 
 	if yieldSig.Results().Len() != 1 {
-		return false, 0
+		return false, false, 0
 	}
 	resType, ok := yieldSig.Results().At(0).Type().Underlying().(*types.Basic)
 	if !ok || resType.Kind() != types.Bool {
-		return false, 0
+		return false, false, 0
 	}
 
 	yieldParams := yieldSig.Params()
-	if !(yieldParams.Len() == 1 || yieldParams.Len() == 2) {
-		return false, 0
-	}
+	switch yieldParams.Len() {
+	case 1:
+		yieldParamType := yieldParams.At(0).Type()
+		return implementsError(yieldParamType), isError(yieldParamType), 1
+	case 2:
+		yieldParam0Type := yieldParams.At(0).Type()
+		yieldParam1Type := yieldParams.At(1).Type()
+		param0ImplementsError := implementsError(yieldParam0Type)
+		param1ImplementsError := implementsError(yieldParam1Type)
 
-	for i := 0; i < yieldParams.Len(); i++ {
-		if implementsError(yieldParams.At(i).Type()) {
-			return true, yieldParams.Len()
+		if param0ImplementsError && param1ImplementsError {
+			a.pass.Reportf(expr.Pos(), "iterator yields multiple errors")
+			return false, false, 0
+		}
+
+		if param0ImplementsError {
+			return true, false, 2
+		}
+
+		if param1ImplementsError {
+			return true, isError(yieldParam1Type), 2
 		}
 	}
 
-	return false, 0
+	return false, false, 0
 }
 
 func (a *analyzer) isErrorExpectedInReturn(resultIndex int, returnedItemCount int) bool {
