@@ -174,7 +174,7 @@ func (a *analyzer) analyze() {
 				}
 
 				if a.shouldWrap(arg) {
-					a.report(arg, a.isErrorExpectedInCallArgs(node, i))
+					a.report(arg, a.isErrorExpectedInCallArgs(node, i, len(node.Args)))
 				}
 			}
 		case *ast.CompositeLit:
@@ -847,23 +847,37 @@ func (a *analyzer) isErrorExpectedInReturn(resultIndex int, returnedItemCount in
 	return isError(results.At(resultIndex).Type())
 }
 
-func (a *analyzer) isErrorExpectedInCallArgs(call *ast.CallExpr, argIndex int) bool {
+func (a *analyzer) isErrorExpectedInCallArgs(call *ast.CallExpr, argIndex, argCount int) bool {
 	funType := a.pass.TypesInfo.TypeOf(call.Fun)
 
 	sig, ok := funType.Underlying().(*types.Signature)
 	if ok {
-		var argType types.Type
 		params := sig.Params()
 
-		if sig.Variadic() && argIndex >= params.Len()-1 {
-			lastParam := params.At(params.Len() - 1).Type()
-			sliceType := lastParam.(*types.Slice)
-			argType = sliceType.Elem()
-		} else if argIndex < params.Len() {
-			argType = params.At(argIndex).Type()
-		}
+		if argCount == 1 && params.Len() > 1 {
+			if sig.Variadic() && isError(params.At(params.Len()-1).Type().Underlying().(*types.Slice).Elem()) {
+				return true
+			}
 
-		return isError(argType)
+			if isError(params.At(params.Len() - 1).Type()) {
+				return true
+			}
+
+			if isError(params.At(params.Len() - 2).Type()) {
+				return true
+			}
+		} else {
+			var argType types.Type
+			if sig.Variadic() && argIndex >= params.Len()-1 {
+				lastParam := params.At(params.Len() - 1).Type()
+				sliceType := lastParam.Underlying().(*types.Slice)
+				argType = sliceType.Elem()
+			} else if argIndex < params.Len() {
+				argType = params.At(argIndex).Type()
+			}
+
+			return isError(argType)
+		}
 	} else if a.pass.TypesInfo.Types[call.Fun].IsType() {
 		return isError(funType)
 	}

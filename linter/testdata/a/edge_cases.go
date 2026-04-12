@@ -99,7 +99,7 @@ func typeConversionArg() {
 	err = error(generated.StructError{}) // want "^generated.StructError literal is not wrapped with stacked$"
 }
 
-func variadic(err ...error) {
+func variadic(errs ...error) {
 }
 
 func variadicFunctionArg() {
