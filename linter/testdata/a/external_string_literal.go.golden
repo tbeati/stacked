@@ -1,0 +1,95 @@
+package a
+
+import (
+	"net"
+
+	"github.com/tbeati/stacked"
+)
+
+func stringLiteralAssignmentExternal() {
+	var err error
+	_ = err
+
+	err = stacked.Wrap(net.UnknownNetworkError("error"))
+	err = stacked.Wrap(net.UnknownNetworkError("error"))
+
+	_, err = 0, stacked.Wrap(net.UnknownNetworkError("error"))
+	_, err = 0, stacked.Wrap(net.UnknownNetworkError("error"))
+}
+
+func stringLiteralDeclarationExternal() {
+	{
+		var err = stacked.Wrap(net.UnknownNetworkError("error"))
+		_ = err
+	}
+	{
+		var err = stacked.Wrap(net.UnknownNetworkError("error"))
+		_ = err
+	}
+
+	{
+		var _, err = 0, stacked.Wrap(net.UnknownNetworkError("error"))
+		_ = err
+	}
+	{
+		var _, err = 0, stacked.Wrap(net.UnknownNetworkError("error"))
+		_ = err
+	}
+}
+
+func stringLiteralShortDeclarationExternal() {
+	{
+		err := stacked.Wrap(net.UnknownNetworkError("error"))
+		_ = err
+	}
+	{
+		err := stacked.Wrap(net.UnknownNetworkError("error"))
+		_ = err
+	}
+
+	{
+		_, err := 0, stacked.Wrap(net.UnknownNetworkError("error"))
+		_ = err
+	}
+	{
+		_, err := 0, stacked.Wrap(net.UnknownNetworkError("error"))
+		_ = err
+	}
+}
+
+func stringLiteralReturnSingleExternal() error {
+	return stacked.Wrap(net.UnknownNetworkError("error"))
+	return stacked.Wrap(net.UnknownNetworkError("error"))
+}
+
+func stringLiteralReturnMultipleExternal() (int, error) {
+	return 0, stacked.Wrap(net.UnknownNetworkError("error"))
+	return 0, stacked.Wrap(net.UnknownNetworkError("error"))
+}
+
+func stringLiteralArgumentExternal() {
+	functionWithIntErrorArgument(0, stacked.Wrap(net.UnknownNetworkError("error")))
+	functionWithIntErrorArgument(0, stacked.Wrap(net.UnknownNetworkError("error")))
+}
+
+func stringLiteralCompositeLiteralExternal() {
+	_ = structWithErrorField{
+		err: stacked.Wrap(net.UnknownNetworkError("error")),
+	}
+	_ = structWithErrorField{
+		err: stacked.Wrap(net.UnknownNetworkError("error")),
+	}
+
+	_ = []error{stacked.Wrap(net.UnknownNetworkError("error"))}
+	_ = []error{stacked.Wrap(net.UnknownNetworkError("error"))}
+
+	_ = map[string]error{"": stacked.Wrap(net.UnknownNetworkError("error"))}
+	_ = map[string]error{"": stacked.Wrap(net.UnknownNetworkError("error"))}
+}
+
+func stringLiteralChannelSendExternal() {
+	var errChan chan error
+
+	errChan <- stacked.Wrap(net.UnknownNetworkError("error"))
+	errChan <- stacked.Wrap(net.UnknownNetworkError("error"))
+}

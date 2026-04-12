@@ -1,0 +1,95 @@
+package a
+
+import (
+	"io/fs"
+
+	"github.com/tbeati/stacked"
+)
+
+func globalVariableAssignmentExternal() {
+	var err error
+	_ = err
+
+	err = stacked.Wrap(fs.ErrNotExist)
+	err = stacked.Wrap(fs.ErrNotExist)
+
+	_, err = 0, stacked.Wrap(fs.ErrNotExist)
+	_, err = 0, stacked.Wrap(fs.ErrNotExist)
+}
+
+func globalVariableDeclarationExternal() {
+	{
+		var err = stacked.Wrap(fs.ErrNotExist)
+		_ = err
+	}
+	{
+		var err = stacked.Wrap(fs.ErrNotExist)
+		_ = err
+	}
+
+	{
+		var _, err = 0, stacked.Wrap(fs.ErrNotExist)
+		_ = err
+	}
+	{
+		var _, err = 0, stacked.Wrap(fs.ErrNotExist)
+		_ = err
+	}
+}
+
+func globalVariableShortDeclarationExternal() {
+	{
+		err := stacked.Wrap(fs.ErrNotExist)
+		_ = err
+	}
+	{
+		err := stacked.Wrap(fs.ErrNotExist)
+		_ = err
+	}
+
+	{
+		_, err := 0, stacked.Wrap(fs.ErrNotExist)
+		_ = err
+	}
+	{
+		_, err := 0, stacked.Wrap(fs.ErrNotExist)
+		_ = err
+	}
+}
+
+func globalVariableReturn1External() error {
+	return stacked.Wrap(fs.ErrNotExist)
+	return stacked.Wrap(fs.ErrNotExist)
+}
+
+func globalVariableReturn2External() (int, error) {
+	return 0, stacked.Wrap(fs.ErrNotExist)
+	return 0, stacked.Wrap(fs.ErrNotExist)
+}
+
+func globalVariableArgumentExternal() {
+	functionWithIntErrorArgument(0, stacked.Wrap(fs.ErrNotExist))
+	functionWithIntErrorArgument(0, stacked.Wrap(fs.ErrNotExist))
+}
+
+func globalVariableCompositeLiteralExternal() {
+	_ = structWithErrorField{
+		err: stacked.Wrap(fs.ErrNotExist),
+	}
+	_ = structWithErrorField{
+		err: stacked.Wrap(fs.ErrNotExist),
+	}
+
+	_ = []error{stacked.Wrap(fs.ErrNotExist)}
+	_ = []error{stacked.Wrap(fs.ErrNotExist)}
+
+	_ = map[string]error{"": stacked.Wrap(fs.ErrNotExist)}
+	_ = map[string]error{"": stacked.Wrap(fs.ErrNotExist)}
+}
+
+func globalVariableChannelSendExternal() {
+	var errChan chan error
+
+	errChan <- stacked.Wrap(fs.ErrNotExist)
+	errChan <- stacked.Wrap(fs.ErrNotExist)
+}

@@ -309,12 +309,10 @@ func (a *analyzer) checkAssignment(lhs, rhs []ast.Expr) {
 
 func (a *analyzer) report(expr ast.Expr, autoFixable bool) {
 	var msg string
-	isCallExprAutoFixable := false
 	returnValueCount := 1
 	isIteratorPull := false
 
-	expr = ast.Unparen(expr)
-	switch expr := expr.(type) {
+	switch expr := ast.Unparen(expr).(type) {
 	case *ast.Ident:
 		msg = fmt.Sprintf("%s is not wrapped with stacked", exprToString(expr))
 	case *ast.SelectorExpr:
@@ -338,12 +336,14 @@ func (a *analyzer) report(expr ast.Expr, autoFixable bool) {
 			msg = fmt.Sprintf("value converted to error type %s is not wrapped with stacked", exprToString(fun))
 		} else {
 			msg = fmt.Sprintf("error returned by %s is not wrapped with stacked", exprToString(fun))
+			var isCallExprAutoFixable bool
 			isCallExprAutoFixable, isIteratorPull, returnValueCount = a.isCallExprAutoFixable(expr)
+			autoFixable = autoFixable && isCallExprAutoFixable
 		}
 	}
 
 	var suggestedFixes []analysis.SuggestedFix
-	if autoFixable && isCallExprAutoFixable {
+	if autoFixable {
 		wrapPull := ""
 		if isIteratorPull {
 			wrapPull = "Pull"
@@ -369,8 +369,7 @@ func (a *analyzer) report(expr ast.Expr, autoFixable bool) {
 func (a *analyzer) reportIterator(expr ast.Expr, autoFixable bool, returnValueCount int) {
 	var msg string
 
-	expr = ast.Unparen(expr)
-	switch expr := expr.(type) {
+	switch expr := ast.Unparen(expr).(type) {
 	case *ast.FuncLit:
 		msg = fmt.Sprintf("iterator literal is not wrapped with stacked")
 	case *ast.UnaryExpr:

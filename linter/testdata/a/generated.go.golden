@@ -1,0 +1,133 @@
+package a
+
+import (
+	"iter"
+
+	"github.com/tbeati/stacked"
+
+	"testdata/generated"
+)
+
+func assignmentGenerated() {
+	var err error
+	_ = err
+
+	err = stacked.Wrap(generated.SingleReturn())
+	err = stacked.Wrap(generated.SingleReturn())
+
+	_, err = stacked.Wrap2(generated.MultipleReturn())
+	_, err = stacked.Wrap2(generated.MultipleReturn())
+
+	localFuncSingle := generated.SingleReturn
+	err = stacked.Wrap(localFuncSingle())
+	err = stacked.Wrap(localFuncSingle())
+
+	localFuncMultiple := generated.MultipleReturn
+	_, err = stacked.Wrap2(localFuncMultiple())
+	_, err = stacked.Wrap2(localFuncMultiple())
+
+	s := generated.StructWithMethods{}
+	err = stacked.Wrap(s.SingleReturn())
+	err = stacked.Wrap(s.SingleReturn())
+
+	_, err = stacked.Wrap2(s.MultipleReturn())
+	_, err = stacked.Wrap2(s.MultipleReturn())
+
+	var i generated.Interface
+	err = stacked.Wrap(i.SingleReturn())
+	err = stacked.Wrap(i.SingleReturn())
+	_, err = stacked.Wrap2(i.MultipleReturn())
+	_, err = stacked.Wrap2(i.MultipleReturn())
+
+	err = stacked.Wrap(generated.ErrGlobal)
+	err = stacked.Wrap(generated.ErrGlobal)
+
+	err = stacked.Wrap(generated.StringError("error"))
+	err = stacked.Wrap(generated.StringError("error"))
+
+	err = stacked.Wrap(generated.StructError{Message: "error"})
+	err = stacked.Wrap(generated.StructError{Message: "error"})
+
+	err = stacked.Wrap(&generated.StructError{Message: "error"})
+	err = stacked.Wrap(&generated.StructError{Message: "error"})
+
+	err = stacked.Wrap(generated.ReturnConcreteType())
+	err = stacked.Wrap(generated.ReturnConcreteType())
+	err = stacked.Wrap(generated.ReturnConcreteTypePointer())
+	err = stacked.Wrap(generated.ReturnConcreteTypePointer())
+
+	err = stacked.Wrap(generated.ErrGlobalConcreteType)
+	err = stacked.Wrap(generated.ErrGlobalConcreteType)
+	err = stacked.Wrap(generated.ErrGlobalConcreteTypePointer)
+	err = stacked.Wrap(generated.ErrGlobalConcreteTypePointer)
+	err = &generated.ErrGlobalConcreteType
+	err = *generated.ErrGlobalConcreteTypePointer
+}
+
+func iteratorGenerated() {
+	var seq iter.Seq[error]
+	_ = seq
+
+	seq = generated.Seq
+
+	for range stacked.WrapSeq(seq) {
+	}
+	for range stacked.WrapSeq(seq) {
+	}
+
+	for range stacked.WrapSeq(generated.Seq) {
+	}
+	for range stacked.WrapSeq(generated.Seq) {
+	}
+
+	for range stacked.WrapSeq(generated.Iterator()) {
+	}
+	for range stacked.WrapSeq(generated.Iterator()) {
+	}
+
+	for range stacked.WrapSeq(func(yield func(err error) bool) {}) {
+	}
+	for range stacked.WrapSeq(func(yield func(err error) bool) {}) {
+	}
+
+	var seq2 iter.Seq2[int, error]
+	_ = seq2
+
+	seq2 = generated.Seq2
+
+	for range stacked.WrapSeq2(seq2) {
+	}
+	for range stacked.WrapSeq2(seq2) {
+	}
+
+	for range stacked.WrapSeq2(generated.Seq2) {
+	}
+	for range stacked.WrapSeq2(generated.Seq2) {
+	}
+
+	for range stacked.WrapSeq2(generated.Iterator2()) {
+	}
+	for range stacked.WrapSeq2(generated.Iterator2()) {
+	}
+
+	for range stacked.WrapSeq2(func(yield func(n int, err error) bool) {}) {
+	}
+	for range stacked.WrapSeq2(func(yield func(n int, err error) bool) {}) {
+	}
+}
+
+func iteratorPullGenerated() {
+	var err error
+	_ = err
+
+	var seq iter.Seq[error]
+	next, _ := iter.Pull(seq)
+	err, _ = stacked.WrapPull(next())
+	err, _ = stacked.WrapPull(next())
+
+	var seq2 iter.Seq2[int, error]
+	_ = seq2
+	next2, _ := iter.Pull2(seq2)
+	_, err, _ = stacked.WrapPull2(next2())
+	_, err, _ = stacked.WrapPull2(next2())
+}

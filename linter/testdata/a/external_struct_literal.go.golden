@@ -1,0 +1,95 @@
+package a
+
+import (
+	"io/fs"
+
+	"github.com/tbeati/stacked"
+)
+
+func structLiteralAssignmentExternal() {
+	var err error
+	_ = err
+
+	err = stacked.Wrap(&fs.PathError{Path: "error"})
+	err = stacked.Wrap(&fs.PathError{Path: "error"})
+
+	_, err = 0, stacked.Wrap(&fs.PathError{Path: "error"})
+	_, err = 0, stacked.Wrap(&fs.PathError{Path: "error"})
+}
+
+func structLiteralDeclarationExternal() {
+	{
+		var err = stacked.Wrap(&fs.PathError{Path: "error"})
+		_ = err
+	}
+	{
+		var err = stacked.Wrap(&fs.PathError{Path: "error"})
+		_ = err
+	}
+
+	{
+		var _, err = 0, stacked.Wrap(&fs.PathError{Path: "error"})
+		_ = err
+	}
+	{
+		var _, err = 0, stacked.Wrap(&fs.PathError{Path: "error"})
+		_ = err
+	}
+}
+
+func structLiteralShortDeclarationExternal() {
+	{
+		err := stacked.Wrap(&fs.PathError{Path: "error"})
+		_ = err
+	}
+	{
+		err := stacked.Wrap(&fs.PathError{Path: "error"})
+		_ = err
+	}
+
+	{
+		_, err := 0, stacked.Wrap(&fs.PathError{Path: "error"})
+		_ = err
+	}
+	{
+		_, err := 0, stacked.Wrap(&fs.PathError{Path: "error"})
+		_ = err
+	}
+}
+
+func structLiteralReturnSingleExternal() error {
+	return stacked.Wrap(&fs.PathError{Path: "error"})
+	return stacked.Wrap(&fs.PathError{Path: "error"})
+}
+
+func structLiteralReturnMultipleExternal() (int, error) {
+	return 0, stacked.Wrap(&fs.PathError{Path: "error"})
+	return 0, stacked.Wrap(&fs.PathError{Path: "error"})
+}
+
+func structLiteralArgumentExternal() {
+	functionWithIntErrorArgument(0, stacked.Wrap(&fs.PathError{Path: "error"}))
+	functionWithIntErrorArgument(0, stacked.Wrap(&fs.PathError{Path: "error"}))
+}
+
+func structLiteralCompositeLiteralExternal() {
+	_ = structWithErrorField{
+		err: stacked.Wrap(&fs.PathError{Path: "error"}),
+	}
+	_ = structWithErrorField{
+		err: stacked.Wrap(&fs.PathError{Path: "error"}),
+	}
+
+	_ = []error{stacked.Wrap(&fs.PathError{Path: "error"})}
+	_ = []error{stacked.Wrap(&fs.PathError{Path: "error"})}
+
+	_ = map[string]error{"": stacked.Wrap(&fs.PathError{Path: "error"})}
+	_ = map[string]error{"": stacked.Wrap(&fs.PathError{Path: "error"})}
+}
+
+func structLiteralChannelSendExternal() {
+	var errChan chan error
+
+	errChan <- stacked.Wrap(&fs.PathError{Path: "error"})
+	errChan <- stacked.Wrap(&fs.PathError{Path: "error"})
+}

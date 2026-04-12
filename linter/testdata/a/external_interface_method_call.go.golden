@@ -1,0 +1,154 @@
+package a
+
+import (
+	"io/fs"
+
+	"github.com/tbeati/stacked"
+)
+
+func externalInterfaceMethodCallAssignmentExternal() {
+	var err error
+	_ = err
+	var file fs.File
+
+	err = stacked.Wrap(file.Close())
+	err = stacked.Wrap(file.Close())
+
+	_, err = 0, stacked.Wrap(file.Close())
+	_, err = 0, stacked.Wrap(file.Close())
+
+	_, err = stacked.Wrap2(file.Stat())
+	_, err = stacked.Wrap2(file.Stat())
+}
+
+func externalInterfaceMethodCallDeclarationExternal() {
+	var file fs.File
+
+	{
+		var err = stacked.Wrap(file.Close())
+		_ = err
+	}
+	{
+		var err = stacked.Wrap(file.Close())
+		_ = err
+	}
+
+	{
+		var _, err = 0, stacked.Wrap(file.Close())
+		_ = err
+	}
+	{
+		var _, err = 0, stacked.Wrap(file.Close())
+		_ = err
+	}
+
+	{
+		var _, err = stacked.Wrap2(file.Stat())
+		_ = err
+	}
+	{
+		var _, err = stacked.Wrap2(file.Stat())
+		_ = err
+	}
+}
+
+func externalInterfaceMethodCallShortDeclarationExternal() {
+	var file fs.File
+
+	{
+		err := stacked.Wrap(file.Close())
+		_ = err
+	}
+	{
+		err := stacked.Wrap(file.Close())
+		_ = err
+	}
+
+	{
+		_, err := 0, stacked.Wrap(file.Close())
+		_ = err
+	}
+	{
+		_, err := 0, stacked.Wrap(file.Close())
+		_ = err
+	}
+
+	{
+		_, err := stacked.Wrap2(file.Stat())
+		_ = err
+	}
+	{
+		_, err := stacked.Wrap2(file.Stat())
+		_ = err
+	}
+}
+
+func externalInterfaceMethodCallReturn1External() error {
+	var file fs.File
+
+	return stacked.Wrap(file.Close())
+	return stacked.Wrap(file.Close())
+}
+
+func externalInterfaceMethodCallReturn2External() (fs.FileInfo, error) {
+	var file fs.File
+
+	return nil, stacked.Wrap(file.Close())
+	return nil, stacked.Wrap(file.Close())
+
+	return stacked.Wrap2(file.Stat())
+	return stacked.Wrap2(file.Stat())
+}
+
+func externalInterfaceMethodCallArgumentExternal() {
+	var file fs.File
+
+	functionWithErrorArgument(stacked.Wrap(file.Close()))
+	functionWithErrorArgument(stacked.Wrap(file.Close()))
+
+	functionWithFileErrorArgument(nil, stacked.Wrap(file.Close()))
+	functionWithFileErrorArgument(nil, stacked.Wrap(file.Close()))
+
+	functionWithFileInfoErrorArgument(stacked.Wrap2(file.Stat()))
+	functionWithFileInfoErrorArgument(stacked.Wrap2(file.Stat()))
+}
+
+func externalInterfaceMethodCallCompositeLiteralExternal() {
+	var file fs.File
+
+	_ = structWithErrorField{
+		err: stacked.Wrap(file.Close()),
+	}
+	_ = structWithErrorField{
+		err: stacked.Wrap(file.Close()),
+	}
+
+	_ = []error{stacked.Wrap(file.Close())}
+	_ = []error{stacked.Wrap(file.Close())}
+
+	_ = map[string]error{"": stacked.Wrap(file.Close())}
+	_ = map[string]error{"": stacked.Wrap(file.Close())}
+}
+
+func externalInterfaceMethodCallChannelSendExternal() {
+	var errChan chan error
+	var file fs.File
+
+	errChan <- stacked.Wrap(file.Close())
+	errChan <- stacked.Wrap(file.Close())
+}
+
+func externalInterfaceMethodCallBlankAssignmentExternal() {
+	var file fs.File
+
+	_ = file.Close()
+	_, _ = 0, file.Close()
+	_, _ = file.Stat()
+}
+
+func externalInterfaceMethodCallReturnValuesIgnoredExternal() {
+	var file fs.File
+
+	file.Close()
+	file.Stat()
+}

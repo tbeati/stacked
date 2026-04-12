@@ -1,0 +1,40 @@
+package a
+
+import (
+	"github.com/tbeati/stacked"
+)
+
+func assignmentSelf() {
+	var err error
+	_ = err
+
+	err = singleReturn()
+	_, err = multipleReturn()
+
+	localFuncSingle := singleReturn
+	err = stacked.Wrap(localFuncSingle())
+	err = stacked.Wrap(localFuncSingle())
+
+	localFuncMultiple := multipleReturn
+	_, err = stacked.Wrap2(localFuncMultiple())
+	_, err = stacked.Wrap2(localFuncMultiple())
+
+	s := structWithMethods{}
+	err = s.singleReturn()
+	_, err = s.multipleReturn()
+
+	var i localInterface
+	err = stacked.Wrap(i.SingleReturn())
+	err = stacked.Wrap(i.SingleReturn())
+	_, err = stacked.Wrap2(i.MultipleReturn())
+	_, err = stacked.Wrap2(i.MultipleReturn())
+
+	err = stacked.Wrap(errGlobal)
+	err = stacked.Wrap(errGlobal)
+
+	err = stacked.Wrap(stringError("error"))
+	err = stacked.Wrap(stringError("error"))
+
+	err = stacked.Wrap(structError{message: "error"})
+	err = stacked.Wrap(structError{message: "error"})
+}
