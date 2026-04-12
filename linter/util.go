@@ -2,8 +2,6 @@ package linter
 
 import (
 	"go/ast"
-	"go/printer"
-	"go/token"
 	"go/types"
 	"regexp"
 	"strings"
@@ -32,15 +30,6 @@ func isBool(t types.Type) bool {
 func isBlankIdent(expr ast.Expr) bool {
 	ident, ok := ast.Unparen(expr).(*ast.Ident)
 	return ok && ident.Name == "_"
-}
-
-func exprToString(expr ast.Expr) string {
-	var s strings.Builder
-	err := printer.Fprint(&s, token.NewFileSet(), expr)
-	if err != nil {
-		panic(err)
-	}
-	return s.String()
 }
 
 func typeToString(t types.Type, currentPkg *types.Package) string {

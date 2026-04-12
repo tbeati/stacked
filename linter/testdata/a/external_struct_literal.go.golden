@@ -19,7 +19,7 @@ func structLiteralAssignmentExternal() {
 
 func structLiteralDeclarationExternal() {
 	{
-		var err = stacked.Wrap(&fs.PathError{Path: "error"}) // want "^fs.PathError literal is not wrapped with stacked$"
+		var err = &fs.PathError{Path: "error"} // want "^fs.PathError literal is not wrapped with stacked$"
 		_ = err
 	}
 	{
@@ -28,7 +28,7 @@ func structLiteralDeclarationExternal() {
 	}
 
 	{
-		var _, err = 0, stacked.Wrap(&fs.PathError{Path: "error"}) // want "^fs.PathError literal is not wrapped with stacked$"
+		var _, err = 0, &fs.PathError{Path: "error"} // want "^fs.PathError literal is not wrapped with stacked$"
 		_ = err
 	}
 	{
@@ -39,7 +39,7 @@ func structLiteralDeclarationExternal() {
 
 func structLiteralShortDeclarationExternal() {
 	{
-		err := stacked.Wrap(&fs.PathError{Path: "error"}) // want "^fs.PathError literal is not wrapped with stacked$"
+		err := &fs.PathError{Path: "error"} // want "^fs.PathError literal is not wrapped with stacked$"
 		_ = err
 	}
 	{
@@ -48,7 +48,7 @@ func structLiteralShortDeclarationExternal() {
 	}
 
 	{
-		_, err := 0, stacked.Wrap(&fs.PathError{Path: "error"}) // want "^fs.PathError literal is not wrapped with stacked$"
+		_, err := 0, &fs.PathError{Path: "error"} // want "^fs.PathError literal is not wrapped with stacked$"
 		_ = err
 	}
 	{

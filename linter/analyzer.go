@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"go/ast"
 	"go/constant"
+	"go/printer"
 	"go/token"
 	"go/types"
 	"strconv"
@@ -309,14 +310,14 @@ func (a *analyzer) checkAssignment(lhs, rhs []ast.Expr) {
 
 func (a *analyzer) report(expr ast.Expr, autoFixable bool) {
 	var msg string
-	returnValueCount := 1
+	valueCount := 1
 	isIteratorPull := false
 
 	switch expr := ast.Unparen(expr).(type) {
 	case *ast.Ident:
-		msg = fmt.Sprintf("%s is not wrapped with stacked", exprToString(expr))
+		msg = fmt.Sprintf("%s is not wrapped with stacked", a.exprToString(expr))
 	case *ast.SelectorExpr:
-		msg = fmt.Sprintf("%s is not wrapped with stacked", exprToString(expr))
+		msg = fmt.Sprintf("%s is not wrapped with stacked", a.exprToString(expr))
 	case *ast.CompositeLit:
 		exprType := a.pass.TypesInfo.TypeOf(expr)
 		msg = fmt.Sprintf("%s literal is not wrapped with stacked", typeToString(exprType, a.pass.Pkg))
@@ -327,17 +328,17 @@ func (a *analyzer) report(expr ast.Expr, autoFixable bool) {
 			msg = fmt.Sprintf("%s literal is not wrapped with stacked", typeToString(exprType, a.pass.Pkg))
 		default:
 			if expr.Op == token.ARROW {
-				msg = fmt.Sprintf("error received from %s is not wrapped with stacked", exprToString(subExpr))
+				msg = fmt.Sprintf("error received from %s is not wrapped with stacked", a.exprToString(subExpr))
 			}
 		}
 	case *ast.CallExpr:
 		fun := ast.Unparen(expr.Fun)
 		if a.isTypeConversion(expr) {
-			msg = fmt.Sprintf("value converted to error type %s is not wrapped with stacked", exprToString(fun))
+			msg = fmt.Sprintf("value converted to error type %s is not wrapped with stacked", a.exprToString(fun))
 		} else {
-			msg = fmt.Sprintf("error returned by %s is not wrapped with stacked", exprToString(fun))
+			msg = fmt.Sprintf("error returned by %s is not wrapped with stacked", a.exprToString(fun))
 			var isCallExprAutoFixable bool
-			isCallExprAutoFixable, isIteratorPull, returnValueCount = a.isCallExprAutoFixable(expr)
+			isCallExprAutoFixable, isIteratorPull, valueCount = a.isCallExprAutoFixable(expr)
 			autoFixable = autoFixable && isCallExprAutoFixable
 		}
 	}
@@ -350,8 +351,8 @@ func (a *analyzer) report(expr ast.Expr, autoFixable bool) {
 		}
 
 		wrapValueCountString := ""
-		if returnValueCount > 1 {
-			wrapValueCountString = strconv.Itoa(returnValueCount)
+		if valueCount > 1 {
+			wrapValueCountString = strconv.Itoa(valueCount)
 		}
 
 		wrapFuncName := fmt.Sprintf("stacked.Wrap%s%s", wrapPull, wrapValueCountString)
@@ -374,19 +375,19 @@ func (a *analyzer) reportIterator(expr ast.Expr, autoFixable bool, returnValueCo
 		msg = fmt.Sprintf("iterator literal is not wrapped with stacked")
 	case *ast.UnaryExpr:
 		if expr.Op == token.ARROW {
-			msg = fmt.Sprintf("iterator received from %s is not wrapped with stacked", exprToString(ast.Unparen(expr.X)))
+			msg = fmt.Sprintf("iterator received from %s is not wrapped with stacked", a.exprToString(ast.Unparen(expr.X)))
 		} else {
-			msg = fmt.Sprintf("%s is not wrapped with stacked", exprToString(expr))
+			msg = fmt.Sprintf("%s is not wrapped with stacked", a.exprToString(expr))
 		}
 	case *ast.CallExpr:
 		fun := ast.Unparen(expr.Fun)
 		if a.isTypeConversion(expr) {
-			msg = fmt.Sprintf("value converted to iterator type %s is not wrapped with stacked", exprToString(fun))
+			msg = fmt.Sprintf("value converted to iterator type %s is not wrapped with stacked", a.exprToString(fun))
 		} else {
-			msg = fmt.Sprintf("iterator returned by %s is not wrapped with stacked", exprToString(fun))
+			msg = fmt.Sprintf("iterator returned by %s is not wrapped with stacked", a.exprToString(fun))
 		}
 	default:
-		msg = fmt.Sprintf("%s is not wrapped with stacked", exprToString(expr))
+		msg = fmt.Sprintf("%s is not wrapped with stacked", a.exprToString(expr))
 	}
 
 	var suggestedFixes []analysis.SuggestedFix
@@ -414,7 +415,7 @@ func (a *analyzer) suggestedFixes(expr ast.Expr, wrapFuncName string) []analysis
 		TextEdits: []analysis.TextEdit{{
 			Pos:     expr.Pos(),
 			End:     expr.End(),
-			NewText: []byte(fmt.Sprintf("%s(%s)", wrapFuncName, exprToString(expr))),
+			NewText: []byte(fmt.Sprintf("%s(%s)", wrapFuncName, a.exprToString(expr))),
 		}},
 	}}
 
@@ -442,6 +443,15 @@ func addMissingStackedImport(file *ast.File) *analysis.TextEdit {
 		End:     importPos,
 		NewText: []byte(newText),
 	}
+}
+
+func (a *analyzer) exprToString(expr ast.Expr) string {
+	var s strings.Builder
+	err := printer.Fprint(&s, a.pass.Fset, expr)
+	if err != nil {
+		panic(err)
+	}
+	return s.String()
 }
 
 func (a *analyzer) shouldWrap(expr ast.Expr) bool {

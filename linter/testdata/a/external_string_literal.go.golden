@@ -19,7 +19,7 @@ func stringLiteralAssignmentExternal() {
 
 func stringLiteralDeclarationExternal() {
 	{
-		var err = stacked.Wrap(net.UnknownNetworkError("error")) // want "^value converted to error type net.UnknownNetworkError is not wrapped with stacked$"
+		var err = net.UnknownNetworkError("error") // want "^value converted to error type net.UnknownNetworkError is not wrapped with stacked$"
 		_ = err
 	}
 	{
@@ -28,7 +28,7 @@ func stringLiteralDeclarationExternal() {
 	}
 
 	{
-		var _, err = 0, stacked.Wrap(net.UnknownNetworkError("error")) // want "^value converted to error type net.UnknownNetworkError is not wrapped with stacked$"
+		var _, err = 0, net.UnknownNetworkError("error") // want "^value converted to error type net.UnknownNetworkError is not wrapped with stacked$"
 		_ = err
 	}
 	{
@@ -39,7 +39,7 @@ func stringLiteralDeclarationExternal() {
 
 func stringLiteralShortDeclarationExternal() {
 	{
-		err := stacked.Wrap(net.UnknownNetworkError("error")) // want "^value converted to error type net.UnknownNetworkError is not wrapped with stacked$"
+		err := net.UnknownNetworkError("error") // want "^value converted to error type net.UnknownNetworkError is not wrapped with stacked$"
 		_ = err
 	}
 	{
@@ -48,7 +48,7 @@ func stringLiteralShortDeclarationExternal() {
 	}
 
 	{
-		_, err := 0, stacked.Wrap(net.UnknownNetworkError("error")) // want "^value converted to error type net.UnknownNetworkError is not wrapped with stacked$"
+		_, err := 0, net.UnknownNetworkError("error") // want "^value converted to error type net.UnknownNetworkError is not wrapped with stacked$"
 		_ = err
 	}
 	{
