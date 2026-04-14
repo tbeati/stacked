@@ -93,11 +93,26 @@ func newError() {
 	err = stacked.Wrap(new(generated.StructError))
 }
 
+type doesNotImplementsError struct{}
+
+type implementsError doesNotImplementsError
+
+func (e implementsError) Error() string {
+	return "error"
+}
+
 func typeConversionArg() {
 	var err error
 	_ = err
 
 	err = error(generated.StructError{}) // want "^generated.StructError literal is not wrapped with stacked$"
+
+	err = implementsError(doesNotImplementsError{}) // want "^value converted to error type implementsError is not wrapped with stacked$"
+	err = stacked.Wrap(implementsError(doesNotImplementsError{}))
+
+	const errMessage = "error"
+	err = net.UnknownNetworkError(errMessage) // want "^value converted to error type net.UnknownNetworkError is not wrapped with stacked$"
+	err = stacked.Wrap(net.UnknownNetworkError(errMessage))
 }
 
 func localConst() {
