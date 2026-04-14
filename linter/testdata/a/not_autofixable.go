@@ -57,6 +57,9 @@ func notAutoFixableFunctionCallCompositeLiteral() {
 	_ = structWithConcreteStringErrorField{
 		err: generated.ReturnConcreteType(), // want "^error returned by generated.ReturnConcreteType is not wrapped with stacked$"
 	}
+	_ = &structWithConcreteStringErrorField{
+		err: generated.ReturnConcreteType(), // want "^error returned by generated.ReturnConcreteType is not wrapped with stacked$"
+	}
 
 	_ = []generated.StringError{generated.ReturnConcreteType()} // want "^error returned by generated.ReturnConcreteType is not wrapped with stacked$"
 
@@ -75,4 +78,13 @@ func notAutoFixableIteratorRange() {
 
 	for range func(yield func(n int, err stringError) bool) {} { // want "^iterator literal is not wrapped with stacked$"
 	}
+}
+
+func notAutoFixableIteratorPullErrorFirst() {
+	var err error
+	_ = err
+
+	var pullErrorFirst func() (error, int, bool)
+
+	err, _, _ = pullErrorFirst() // want "^error returned by pullErrorFirst is not wrapped with stacked$"
 }

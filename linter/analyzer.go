@@ -403,7 +403,7 @@ func (a *analyzer) reportIterator(expr ast.Expr, autoFixable bool, returnValueCo
 	}
 
 	var suggestedFixes []analysis.SuggestedFix
-	if autoFixable && returnValueCount <= 2 {
+	if autoFixable {
 		wrapValueCountString := ""
 		if returnValueCount > 1 {
 			wrapValueCountString = strconv.Itoa(returnValueCount)
@@ -930,11 +930,6 @@ func (a *analyzer) isErrorExpectedInCallArgs(call *ast.CallExpr, argIndex, argCo
 
 func (a *analyzer) isErrorExpectedInLit(lit *ast.CompositeLit, elt ast.Expr, eltIndex int) bool {
 	litType := a.pass.TypesInfo.TypeOf(lit)
-
-	ptr, ok := litType.Underlying().(*types.Pointer)
-	if ok {
-		litType = ptr.Elem()
-	}
 
 	var expectedType types.Type
 
