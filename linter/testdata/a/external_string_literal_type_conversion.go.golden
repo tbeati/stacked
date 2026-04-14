@@ -6,7 +6,7 @@ import (
 	"github.com/tbeati/stacked"
 )
 
-func stringLiteralAssignmentExternal() {
+func stringLiteralTypeConversionAssignmentExternal() {
 	var err error
 	_ = err
 
@@ -17,7 +17,7 @@ func stringLiteralAssignmentExternal() {
 	_, err = 0, stacked.Wrap(net.UnknownNetworkError("error"))
 }
 
-func stringLiteralDeclarationExternal() {
+func stringLiteralTypeConversionDeclarationExternal() {
 	{
 		var err = net.UnknownNetworkError("error") // want "^value converted to error type net.UnknownNetworkError is not wrapped with stacked$"
 		_ = err
@@ -37,7 +37,7 @@ func stringLiteralDeclarationExternal() {
 	}
 }
 
-func stringLiteralShortDeclarationExternal() {
+func stringLiteralTypeConversionShortDeclarationExternal() {
 	{
 		err := net.UnknownNetworkError("error") // want "^value converted to error type net.UnknownNetworkError is not wrapped with stacked$"
 		_ = err
@@ -57,22 +57,22 @@ func stringLiteralShortDeclarationExternal() {
 	}
 }
 
-func stringLiteralReturnSingleExternal() error {
+func stringLiteralTypeConversionReturnSingleExternal() error {
 	return stacked.Wrap(net.UnknownNetworkError("error")) // want "^value converted to error type net.UnknownNetworkError is not wrapped with stacked$"
 	return stacked.Wrap(net.UnknownNetworkError("error"))
 }
 
-func stringLiteralReturnMultipleExternal() (int, error) {
+func stringLiteralTypeConversionReturnMultipleExternal() (int, error) {
 	return 0, stacked.Wrap(net.UnknownNetworkError("error")) // want "^value converted to error type net.UnknownNetworkError is not wrapped with stacked$"
 	return 0, stacked.Wrap(net.UnknownNetworkError("error"))
 }
 
-func stringLiteralArgumentExternal() {
+func stringLiteralTypeConversionArgumentExternal() {
 	functionWithIntErrorArgument(0, stacked.Wrap(net.UnknownNetworkError("error"))) // want "^value converted to error type net.UnknownNetworkError is not wrapped with stacked$"
 	functionWithIntErrorArgument(0, stacked.Wrap(net.UnknownNetworkError("error")))
 }
 
-func stringLiteralCompositeLiteralExternal() {
+func stringLiteralTypeConversionCompositeLiteralExternal() {
 	_ = structWithErrorField{
 		err: stacked.Wrap(net.UnknownNetworkError("error")), // want "^value converted to error type net.UnknownNetworkError is not wrapped with stacked$"
 	}
@@ -87,7 +87,7 @@ func stringLiteralCompositeLiteralExternal() {
 	_ = map[string]error{"": stacked.Wrap(net.UnknownNetworkError("error"))}
 }
 
-func stringLiteralChannelSendExternal() {
+func stringLiteralTypeConversionChannelSendExternal() {
 	var errChan chan error
 
 	errChan <- stacked.Wrap(net.UnknownNetworkError("error")) // want "^value converted to error type net.UnknownNetworkError is not wrapped with stacked$"

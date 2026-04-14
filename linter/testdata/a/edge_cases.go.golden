@@ -3,6 +3,7 @@ package a
 import (
 	"errors"
 	"io/fs"
+	"net"
 	"os"
 
 	"github.com/tbeati/stacked"
@@ -97,6 +98,14 @@ func typeConversionArg() {
 	_ = err
 
 	err = error(stacked.Wrap(generated.StructError{})) // want "^generated.StructError literal is not wrapped with stacked$"
+}
+
+func localConst() {
+	var err net.UnknownNetworkError
+	_ = err
+
+	const errMessage = "error"
+	err = errMessage // want "^errMessage is not wrapped with stacked$"
 }
 
 func variadic(errs ...error) {

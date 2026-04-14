@@ -52,8 +52,7 @@ func ReturnConcreteType() StringError {
 }
 
 func ReturnConcreteTypePointer() *StringError {
-	var err = StringError("error")
-	return &err
+	return new(StringError("error"))
 }
 
 func IgnoredFunction(err error) error {

@@ -167,10 +167,15 @@ func (a *analyzer) analyze() {
 				return true
 			}
 
+			isTypeConversion := a.isTypeConversion(node)
 			isErrorCheckCall, argumentIndex := a.isErrorCheckCall(node)
 
 			for i, arg := range node.Args {
 				if isErrorCheckCall && i == argumentIndex {
+					continue
+				}
+
+				if isTypeConversion && a.isConst(arg) {
 					continue
 				}
 
@@ -314,8 +319,15 @@ func (a *analyzer) report(expr ast.Expr, autoFixable bool) {
 	isIteratorPull := false
 
 	switch expr := ast.Unparen(expr).(type) {
+	case *ast.BasicLit:
+		msg = fmt.Sprintf("basic literal %s is not wrapped with stacked", a.exprToString(expr))
 	case *ast.Ident:
-		msg = fmt.Sprintf("%s is not wrapped with stacked", a.exprToString(expr))
+		obj := a.pass.TypesInfo.ObjectOf(expr)
+		if obj.Parent() == types.Universe && (obj.Name() == "true" || obj.Name() == "false") {
+			msg = fmt.Sprintf("basic literal %s is not wrapped with stacked", a.exprToString(expr))
+		} else {
+			msg = fmt.Sprintf("%s is not wrapped with stacked", a.exprToString(expr))
+		}
 	case *ast.SelectorExpr:
 		msg = fmt.Sprintf("%s is not wrapped with stacked", a.exprToString(expr))
 	case *ast.CompositeLit:
@@ -461,6 +473,8 @@ func (a *analyzer) shouldWrap(expr ast.Expr) bool {
 
 	expr = ast.Unparen(expr)
 	switch expr := expr.(type) {
+	case *ast.BasicLit:
+		return a.shouldWrapBasicLit(expr)
 	case *ast.Ident:
 		return a.shouldWrapIdent(expr)
 	case *ast.SelectorExpr:
@@ -482,26 +496,42 @@ func (a *analyzer) isIgnoredLine(expr ast.Expr) bool {
 	return isIgnored
 }
 
-func (a *analyzer) shouldWrapIdent(ident *ast.Ident) bool {
-	obj := a.pass.TypesInfo.ObjectOf(ident)
+func (a *analyzer) shouldWrapBasicLit(expr *ast.BasicLit) bool {
+	return implementsError(a.pass.TypesInfo.TypeOf(expr))
+}
 
-	variable, ok := obj.(*types.Var)
-	if !ok {
+func (a *analyzer) shouldWrapIdent(ident *ast.Ident) bool {
+	if !implementsError(a.pass.TypesInfo.TypeOf(ident)) {
 		return false
 	}
 
-	return implementsError(variable.Type()) && variable.Pkg() != nil && variable.Parent() == variable.Pkg().Scope()
+	obj := a.pass.TypesInfo.ObjectOf(ident)
+
+	switch obj.(type) {
+	case *types.Const:
+		return true
+	case *types.Var:
+		return obj.Pkg() != nil && obj.Parent() == obj.Pkg().Scope()
+	}
+
+	return false
 }
 
 func (a *analyzer) shouldWrapSelector(expr *ast.SelectorExpr) bool {
-	obj := a.pass.TypesInfo.ObjectOf(expr.Sel)
-
-	variable, ok := obj.(*types.Var)
-	if !ok {
+	if !implementsError(a.pass.TypesInfo.TypeOf(expr)) {
 		return false
 	}
 
-	return implementsError(variable.Type()) && variable.Pkg() != nil && variable.Parent() == variable.Pkg().Scope()
+	obj := a.pass.TypesInfo.ObjectOf(expr.Sel)
+
+	switch obj.(type) {
+	case *types.Const:
+		return true
+	case *types.Var:
+		return obj.Pkg() != nil && obj.Parent() == obj.Pkg().Scope()
+	}
+
+	return false
 }
 
 func (a *analyzer) shouldWrapCompositeLit(lit *ast.CompositeLit) bool {
@@ -534,8 +564,7 @@ func (a *analyzer) shouldWrapCall(call *ast.CallExpr) bool {
 	}
 
 	if a.isTypeConversion(call) {
-		tv := a.pass.TypesInfo.Types[call.Args[0]]
-		return a.returnsError(call) && (tv.Value != nil || !implementsError(tv.Type))
+		return a.returnsError(call) && (a.isConst(call.Args[0]) || !implementsError(a.pass.TypesInfo.TypeOf(call.Args[0])))
 	}
 
 	if a.isInternalCall(call) {
@@ -689,6 +718,10 @@ func (a *analyzer) errorReturnIndex(call *ast.CallExpr) int {
 func (a *analyzer) isTypeConversion(call *ast.CallExpr) bool {
 	callType, ok := a.pass.TypesInfo.Types[call.Fun]
 	return ok && callType.IsType()
+}
+
+func (a *analyzer) isConst(expr ast.Expr) bool {
+	return a.pass.TypesInfo.Types[expr].Value != nil
 }
 
 func (a *analyzer) isCallExprAutoFixable(call *ast.CallExpr) (bool, bool, int) {
