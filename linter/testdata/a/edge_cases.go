@@ -3,6 +3,7 @@ package a
 import (
 	"errors"
 	"io/fs"
+	"iter"
 	"net"
 	"os"
 
@@ -89,6 +90,9 @@ func newError() {
 	var err error
 	_ = err
 
+	err = new(structError) // want "^error returned by new is not wrapped with stacked$"
+	err = stacked.Wrap(new(structError))
+
 	err = new(generated.StructError) // want "^error returned by new is not wrapped with stacked$"
 	err = stacked.Wrap(new(generated.StructError))
 }
@@ -123,12 +127,26 @@ func localConst() {
 	err = errMessage // want "^errMessage is not wrapped with stacked$"
 }
 
+func externalConst() {
+	var err net.UnknownNetworkError
+	_ = err
+
+	err = generated.ErrMessage // want "^generated.ErrMessage is not wrapped with stacked$"
+}
+
 func variadic(errs ...error) {
+}
+
+func variadic2(n int, errs ...error) {
 }
 
 func variadicFunctionArg() {
 	variadic(errors.New("")) // want "^error returned by errors.New is not wrapped with stacked$"
 	variadic(stacked.Wrap(errors.New("")))
+
+	var f func() (int, error)
+	variadic2(f()) // want "^error returned by f is not wrapped with stacked$"
+	variadic2(stacked.Wrap2(f()))
 }
 
 func alternativeGenDecl() {
@@ -141,6 +159,11 @@ func multiErrorDeclarations() {
 	err3, err4 := errors.New("error"), errors.New("error")    // want "^assignment to multiple error variables$"
 	err4, err3, err2, err1 = err1, err2, err3, err4           // want "^assignment to multiple error variables$"
 	_, _, _, _ = err1, err2, err3, err4
+}
+
+func iteratorYieldsMultipleErrors() {
+	for range func(yield func(e1, e2 error) bool) {} { // want "^iterator yields multiple errors$"
+	}
 }
 
 func innerParenthesis() {
@@ -162,4 +185,62 @@ func functionLiteral() {
 	err = func() error {
 		return err
 	}()
+}
+
+func wrapNameCollision() {
+	var Wrap = func(err error) error {
+		return err
+	}
+
+	var err error
+	_ = err
+
+	err = Wrap(err) // want "^error returned by Wrap is not wrapped with stacked$"
+}
+
+type errorSeq func(yield func(err error) bool)
+
+func iteratorTypeConversion() {
+	var seq iter.Seq[error]
+
+	for range errorSeq(seq) { // want "^value converted to iterator type errorSeq is not wrapped with stacked$"
+	}
+}
+
+func callErrorNotLast2() (error, int) {
+	var errorNotLast func() (error, int)
+	return errorNotLast() // want "^error returned by errorNotLast is not wrapped with stacked$"
+}
+
+func callErrorNotLast3() (error, int, int) {
+	var errorNotLast func() (error, int, int)
+	return errorNotLast() // want "^error returned by errorNotLast is not wrapped with stacked$"
+}
+
+func iteratorErrorNotLast() {
+	var seq iter.Seq2[error, int]
+	for range seq { // want "^seq is not wrapped with stacked$"
+	}
+}
+
+func iteratorPullAsArg() {
+	var f func(int, error, bool)
+	var pull func() (int, error, bool)
+
+	f(pull()) // want "^error returned by pull is not wrapped with stacked$"
+}
+
+func compositeLiterals() {
+	_ = structWithErrorField{
+		generated.ErrGlobal, // want "^generated.ErrGlobal is not wrapped with stacked$"
+	}
+
+	_ = [1]error{
+		generated.ErrGlobal, // want "^generated.ErrGlobal is not wrapped with stacked$"
+	}
+}
+
+func rangeWithoutIterator() {
+	for range 1 {
+	}
 }

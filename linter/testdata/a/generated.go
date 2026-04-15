@@ -90,6 +90,18 @@ func iteratorGenerated() {
 	for range stacked.WrapSeq(func(yield func(err error) bool) {}) {
 	}
 
+	seqPointer := &seq
+	for range *seqPointer { // want "^*seqPointer is not wrapped with stacked$"
+	}
+	for range stacked.WrapSeq(*seqPointer) {
+	}
+
+	var iterChan chan iter.Seq[error]
+	for range <-iterChan { // want "^iterator received from iterChan is not wrapped with stacked$"
+	}
+	for range stacked.WrapSeq(<-iterChan) {
+	}
+
 	var seq2 iter.Seq2[int, error]
 	_ = seq2
 

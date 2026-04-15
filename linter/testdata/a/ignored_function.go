@@ -26,6 +26,8 @@ func assignmentIgnoredFunction() {
 
 	err = fmt.Errorf("wrapping %w", err)
 	err = fmt.Errorf("not wrapping") // want "^error returned by fmt.Errorf is not wrapped with stacked$"
+	format := "not wrapping"
+	err = fmt.Errorf(format) // want "^error returned by fmt.Errorf is not wrapped with stacked$"
 
 	err = errors.Join(err)
 	err = errors.Unwrap(err)

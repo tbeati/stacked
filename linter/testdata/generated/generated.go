@@ -5,6 +5,8 @@ import (
 	"iter"
 )
 
+const ErrMessage = "error"
+
 var ErrGlobal = errors.New("error")
 
 type StringError string

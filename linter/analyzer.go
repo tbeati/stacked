@@ -386,11 +386,7 @@ func (a *analyzer) reportIterator(expr ast.Expr, autoFixable bool, returnValueCo
 	case *ast.FuncLit:
 		msg = fmt.Sprintf("iterator literal is not wrapped with stacked")
 	case *ast.UnaryExpr:
-		if expr.Op == token.ARROW {
-			msg = fmt.Sprintf("iterator received from %s is not wrapped with stacked", a.exprToString(ast.Unparen(expr.X)))
-		} else {
-			msg = fmt.Sprintf("%s is not wrapped with stacked", a.exprToString(expr))
-		}
+		msg = fmt.Sprintf("iterator received from %s is not wrapped with stacked", a.exprToString(ast.Unparen(expr.X)))
 	case *ast.CallExpr:
 		fun := ast.Unparen(expr.Fun)
 		if a.isTypeConversion(expr) {
@@ -677,10 +673,6 @@ func (a *analyzer) isFmtErrorfWithW(call *ast.CallExpr) bool {
 		return false
 	}
 
-	if len(call.Args) == 0 {
-		return false
-	}
-
 	formatArg := call.Args[0]
 	tv := a.pass.TypesInfo.Types[formatArg]
 	if tv.Value == nil || tv.Value.Kind() != constant.String {
@@ -743,6 +735,9 @@ func (a *analyzer) isCallExprAutoFixable(call *ast.CallExpr) (bool, bool, int) {
 
 func (a *analyzer) isIteratorPull(call *ast.CallExpr) bool {
 	funType := a.pass.TypesInfo.TypeOf(call.Fun)
+	if funType == nil {
+		return false
+	}
 
 	sig, ok := funType.Underlying().(*types.Signature)
 	if !ok {
@@ -824,25 +819,13 @@ func (a *analyzer) shouldWrapIterator(expr ast.Expr) (bool, bool, int) {
 		}
 	}
 
-	sig, ok := a.pass.TypesInfo.TypeOf(expr).Underlying().(*types.Signature)
+	iteratorSig, ok := a.pass.TypesInfo.TypeOf(expr).Underlying().(*types.Signature)
 	if !ok {
 		return false, false, 0
 	}
 
-	if !(sig.Params().Len() == 1 && sig.Results().Len() == 0) {
-		return false, false, 0
-	}
-
-	yieldSig, ok := sig.Params().At(0).Type().Underlying().(*types.Signature)
+	yieldSig, ok := iteratorSig.Params().At(0).Type().Underlying().(*types.Signature)
 	if !ok {
-		return false, false, 0
-	}
-
-	if yieldSig.Results().Len() != 1 {
-		return false, false, 0
-	}
-	resType, ok := yieldSig.Results().At(0).Type().Underlying().(*types.Basic)
-	if !ok || resType.Kind() != types.Bool {
 		return false, false, 0
 	}
 
