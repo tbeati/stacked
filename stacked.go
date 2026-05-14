@@ -1,19 +1,19 @@
-// Package stacked records a stack trace at the point an error first appears
-// in code — typically the call or expression that produces it — so the
-// captured trace points at the error's origin rather than at the call sites
-// that forward it.
+// Package stacked attaches stack traces to errors. [Wrap] captures the call
+// stack at its invocation site and stores it alongside the error; [StackTrace]
+// retrieves the frames later. Wrapped errors satisfy errors.Is, errors.As,
+// and errors.Unwrap, so they compose with standard error handling.
 //
-// Wrap an error as close to its source as possible:
+// For the captured frames to point at where an error actually originated
+// rather than at intermediate forwarders, wrap errors at their source — the
+// call or expression that produces them:
 //
 //	err := stacked.Wrap(os.Chdir("/"))
 //
-// Wrapping is idempotent: passing an already-wrapped error to [Wrap] returns
-// it unchanged, so the first wrap wins and accidental double-wraps never
-// relocate the trace. io.EOF is ignored by default; register additional
-// ignored errors with [Ignore] or [IgnoreFunc].
+// Wrapping is idempotent: [Wrap] returns nil, already-wrapped errors, and
+// ignored errors unchanged, so the first wrap wins. io.EOF is ignored by
+// default; register additional ignored errors with [Ignore] or [IgnoreFunc].
 //
-// Use [StackTrace] to recover the captured frames, and [Recover] to convert
-// panics and runtime.Goexit into stacked errors.
+// [Recover] converts panics and runtime.Goexit into stacked errors.
 package stacked
 
 import (
@@ -195,7 +195,7 @@ func wrapPull(err error) error {
 	return newError(err, stackTrace, false)
 }
 
-// StackTrace returns the captured frames if err is or wraps a [*Error],
+// StackTrace returns the captured frames if err is or wraps a *[Error],
 // otherwise nil.
 func StackTrace(err error) []StackFrame {
 	stackErr, ok := errors.AsType[*Error](err)
@@ -252,10 +252,10 @@ var (
 // Recover runs f and routes its outcome through onPanic:
 //
 //   - f returns normally: onPanic is not called.
-//   - f panics: onPanic is called with a [*Error] whose Err is the panic
+//   - f panics: onPanic is called with a *[Error] whose Err is the panic
 //     value (if it satisfies error) or fmt.Errorf("%v", value) otherwise,
 //     and whose stack trace points at the panic site.
-//   - f exits via runtime.Goexit: onPanic is called with a [*Error] wrapping
+//   - f exits via runtime.Goexit: onPanic is called with a *[Error] wrapping
 //     [ErrGoexitCalled].
 //
 // onPanic may be nil. If exitOnPanic is true, Recover calls os.Exit(1) after
