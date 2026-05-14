@@ -1,7 +1,7 @@
 // Package stacked attaches stack traces to errors. [Wrap] captures the call
 // stack at its invocation site and stores it alongside the error; [StackTrace]
-// retrieves the frames later. Wrapped errors satisfy errors.Is, errors.As,
-// and errors.Unwrap, so they compose with standard error handling.
+// retrieves the frames later. Wrapped errors satisfy [errors.Is], [errors.As],
+// and [errors.Unwrap], so they compose with standard error handling.
 //
 // For the captured frames to point at where an error actually originated
 // rather than at intermediate forwarders, wrap errors at their source — the
@@ -10,10 +10,10 @@
 //	err := stacked.Wrap(os.Chdir("/"))
 //
 // Wrapping is idempotent: [Wrap] returns nil, already-wrapped errors, and
-// ignored errors unchanged, so the first wrap wins. io.EOF is ignored by
+// ignored errors unchanged, so the first wrap wins. [io.EOF] is ignored by
 // default; register additional ignored errors with [Ignore] or [IgnoreFunc].
 //
-// [Recover] converts panics and runtime.Goexit into stacked errors.
+// [Recover] converts panics and [runtime.Goexit] into stacked errors.
 package stacked
 
 import (
@@ -33,7 +33,7 @@ var ignoreFuncs []func(error) bool
 
 // Ignore registers err so future [Wrap], [WrapSeq], or [WrapPull] calls return
 // it unchanged instead of attaching a stack trace. Calls are deduplicated by
-// identity; registering the same error twice is a no-op. io.EOF is registered
+// identity; registering the same error twice is a no-op. [io.EOF] is registered
 // by default.
 func Ignore(err error) {
 	for _, ignoredError := range ignoredErrors {
@@ -60,7 +60,7 @@ type StackFrame struct {
 
 // Error wraps an underlying error together with a stack trace captured at the
 // wrap site. Recover one from an arbitrary error via [errors.As] or
-// errors.AsType, or call [StackTrace] for the frames directly.
+// [errors.AsType], or call [StackTrace] for the frames directly.
 type Error struct {
 	Err        error
 	StackTrace []StackFrame
@@ -112,7 +112,7 @@ func Wrap5[T1, T2, T3, T4 any](v1 T1, v2 T2, v3 T3, v4 T4, err error) (T1, T2, T
 // stack trace captured at yield time. Because that trace points inside the
 // iterator rather than at the consumer, errors yielded by WrapSeq are also
 // marked for re-wrapping if the caller later drives the sequence via
-// iter.Pull — see [WrapPull].
+// [iter.Pull] — see [WrapPull].
 func WrapSeq(seq iter.Seq[error]) iter.Seq[error] {
 	return func(yield func(error) bool) {
 		seq(func(err error) bool {
@@ -131,7 +131,7 @@ func WrapSeq2[T any](seq iter.Seq2[T, error]) iter.Seq2[T, error] {
 	}
 }
 
-// WrapPull wraps an error returned from an iter.Pull-style next function. It
+// WrapPull wraps an error returned from an [iter.Pull]-style next function. It
 // re-wraps errors previously wrapped by [WrapSeq] / [WrapSeq2] so the captured
 // stack reflects the pull site instead of the yield site; non-iterator
 // already-wrapped errors and ignored errors pass through. The ok value is
@@ -242,10 +242,10 @@ func getStackTrace(skip int) []StackFrame {
 var (
 	// ErrNilPanicValue is reported by [Recover] when the recovered panic value
 	// is nil. On Go ≥ 1.21 this is unreachable without GODEBUG=panicnil=1; the
-	// runtime converts panic(nil) into a *runtime.PanicNilError instead.
+	// runtime converts panic(nil) into a *[runtime.PanicNilError] instead.
 	ErrNilPanicValue = errors.New("panic with nil value")
 	// ErrGoexitCalled is reported by [Recover] when its function exits via
-	// runtime.Goexit.
+	// [runtime.Goexit].
 	ErrGoexitCalled = errors.New("runtime.Goexit called")
 )
 
@@ -253,13 +253,13 @@ var (
 //
 //   - f returns normally: onPanic is not called.
 //   - f panics: onPanic is called with a *[Error] whose Err is the panic
-//     value (if it satisfies error) or fmt.Errorf("%v", value) otherwise,
+//     value (if it satisfies error) or [fmt.Errorf]("%v", value) otherwise,
 //     and whose stack trace points at the panic site.
-//   - f exits via runtime.Goexit: onPanic is called with a *[Error] wrapping
-//     [ErrGoexitCalled].
+//   - f exits via [runtime.Goexit]: onPanic is called with a *[Error]
+//     wrapping [ErrGoexitCalled].
 //
-// onPanic may be nil. If exitOnPanic is true, Recover calls os.Exit(1) after
-// onPanic returns.
+// onPanic may be nil. If exitOnPanic is true, Recover calls [os.Exit](1)
+// after onPanic returns.
 func Recover(f func(), onPanic func(err error), exitOnPanic bool) {
 	internalRecover(f, func(err error) {
 		if onPanic != nil {
