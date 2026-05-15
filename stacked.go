@@ -109,10 +109,7 @@ func Wrap5[T1, T2, T3, T4 any](v1 T1, v2 T2, v3 T3, v4 T4, err error) (T1, T2, T
 }
 
 // WrapSeq returns an iterator that wraps each error yielded by seq with a
-// stack trace captured at yield time. Because that trace points inside the
-// iterator rather than at the consumer, errors yielded by WrapSeq are also
-// marked for re-wrapping if the caller later drives the sequence via
-// [iter.Pull] — see [WrapPull].
+// stack trace captured at yield time.
 func WrapSeq(seq iter.Seq[error]) iter.Seq[error] {
 	return func(yield func(error) bool) {
 		seq(func(err error) bool {
@@ -131,11 +128,9 @@ func WrapSeq2[T any](seq iter.Seq2[T, error]) iter.Seq2[T, error] {
 	}
 }
 
-// WrapPull wraps an error returned from an [iter.Pull]-style next function. It
-// re-wraps errors previously wrapped by [WrapSeq] / [WrapSeq2] so the captured
-// stack reflects the pull site instead of the yield site; non-iterator
-// already-wrapped errors and ignored errors pass through. The ok value is
-// returned unchanged.
+// WrapPull wraps an error returned from an [iter.Pull]-style next function
+// with a stack trace captured at the pull site. Already-wrapped errors and
+// ignored errors pass through unchanged. The ok value is returned unchanged.
 func WrapPull(err error, ok bool) (error, bool) {
 	return wrapPull(err), ok
 }
