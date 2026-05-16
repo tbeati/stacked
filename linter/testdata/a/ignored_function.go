@@ -38,4 +38,6 @@ func errorCheckFunctions() {
 	errors.Is(err, fs.ErrNotExist)
 	errors.Is(err, (fs.ErrNotExist))
 	errors.As(err, &fs.PathError{})
+	pathErr, _ := errors.AsType[*fs.PathError](err)
+	_ = pathErr
 }

@@ -94,7 +94,7 @@ stacked.Recover(
 		// code to run
     },
 	func(err error) {
-        slog.Error("panic occured",
+        slog.Error("panic occurred",
             slog.Any("panic", true),
             slog.Any("error", err),
             slog.Any("stack", stacked.StackTrace(err)),
@@ -184,14 +184,50 @@ Three options tune what the linter considers worth wrapping. The options
 are the same whether you run the standalone binary or the golangci-lint
 plugin, but the configuration file differs, as shown in each section below.
 
-| Option | Type / format | What it does |
-|---|---|---|
-| `packages-treated-as-external` | List of package import paths. Example: `["example.com/generated"]`. | Packages treated as third-party even though they're in your module — typically generated code. Errors crossing out of them are reported; errors produced *inside* them are not. |
-| `ignored-functions` | List of fully-qualified function names, formatted `<import-path>.<Func>` or `<import-path>.<Type>.<Method>` (the standard library uses its short package name, e.g. `errors.Join`). Example: `["connectrpc.com/connect.NewError"]`. | Functions whose returned error never needs wrapping — typically error-decorating helpers like `connectrpc.com/connect.NewError` that take an already-wrapped error and return it, so the trace is already attached. |
-| `check-function-arguments` | List of objects with `function` (a fully-qualified name in the same format as above) and `argument` (the **1-based** position of the error argument). Example: `{ "function": "github.com/stretchr/testify/require.ErrorIs", "argument": 3 }`. | Functions whose Nth argument is a sentinel error passed *in* for comparison, not produced — so it shouldn't be wrapped (e.g. the target of `errors.Is`). |
+#### `packages-treated-as-external`
 
-`errors.Join`, `errors.Unwrap`, `errors.Is` (arg 2), and `errors.As` (arg 2)
-are always handled for you — you don't need to list them.
+Packages treated as third-party even though they're in your module —
+typically generated code. The linter ignores these packages,
+but treats errors they return to *your* code as crossing
+in from outside, so those calls still need wrapping.
+
+Type: list of package import paths.
+
+```json
+["your-module/generated"]
+```
+
+#### `ignored-functions`
+
+Functions whose returned error never needs wrapping — typically
+error-decorating helpers like `connectrpc.com/connect.NewError` that take an
+already-wrapped error and return it, so the trace is already attached.
+
+`errors.AsType` `errors.Join`, `errors.Unwrap`, are ignored by default.
+
+Type: list of fully-qualified function names, formatted
+`<import-path>.<Func>` or `<import-path>.<Type>.<Method>`.
+
+```json
+["connectrpc.com/connect.NewError"]
+```
+
+#### `check-function-arguments`
+
+Marks a specific function argument as an error supplied for comparison
+rather than produced by the program, so the linter leaves that argument
+unwrapped. Use it for arguments that receive an existing sentinel error to
+check against, like the target argument of `errors.Is`.
+
+Type: list of objects with `function` (a fully-qualified name in the same
+format as above) and `argument` (the **1-based** position of the error
+argument).
+
+```json
+[{ "function": "github.com/stretchr/testify/require.ErrorIs", "argument": 3 }]
+```
+
+The `target` arguments of `errors.Is` and `errors.As` are ignored by default.
 
 ### Standalone binary
 
@@ -212,7 +248,7 @@ working directory:
     "packages-treated-as-external": ["example.com/generated"],
     "ignored-functions": ["connectrpc.com/connect.NewError"],
     "check-function-arguments": [
-        { "Function": "github.com/stretchr/testify/require.ErrorIs", "Argument": 3 }
+        { "function": "github.com/stretchr/testify/require.ErrorIs", "argument": 3 }
     ]
 }
 ```

@@ -27,8 +27,8 @@ type Config struct {
 }
 
 type FunctionArgument struct {
-	Function string
-	Argument int
+	Function string `json:"function"`
+	Argument int    `json:"argument"`
 }
 
 func (c *Config) init() {
@@ -73,6 +73,7 @@ func NewAnalyzer(config *Config) *analysis.Analyzer {
 	}
 
 	config.IgnoredFunctions = append(config.IgnoredFunctions,
+		"errors.AsType",
 		"errors.Join",
 		"errors.Unwrap",
 	)
