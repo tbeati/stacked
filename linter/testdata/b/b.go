@@ -42,3 +42,11 @@ type Interface interface {
 	SingleReturn() error
 	MultipleReturn() (int, error)
 }
+
+func GenericOneParam[T any](v T) error {
+	return nil
+}
+
+func GenericTwoParams[T any, U any](a T, b U) error {
+	return nil
+}

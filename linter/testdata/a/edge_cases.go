@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/tbeati/stacked"
+	"testdata/b"
 	"testdata/generated"
 )
 
@@ -243,4 +244,20 @@ func compositeLiterals() {
 func rangeWithoutIterator() {
 	for range 1 {
 	}
+}
+
+func genericCalls() {
+	var err error
+	_ = err
+
+	err = generated.GenericOneParam[int](0) // want "^error returned by generated.GenericOneParam\\[int\\] is not wrapped with stacked$"
+	err = stacked.Wrap(generated.GenericOneParam[int](0))
+
+	err = generated.GenericTwoParams[int, string](0, "") // want "^error returned by generated.GenericTwoParams\\[int, string\\] is not wrapped with stacked$"
+	err = stacked.Wrap(generated.GenericTwoParams[int, string](0, ""))
+
+	err = b.GenericOneParam[int](0)
+	err = b.GenericTwoParams[int, string](0, "")
+
+	_, err = stacked.Wrap2[[]byte](os.ReadFile(""))
 }

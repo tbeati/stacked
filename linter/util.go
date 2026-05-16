@@ -49,3 +49,14 @@ func containsWVerb(formatString string) bool {
 	cleanFormat := strings.ReplaceAll(formatString, "%%", "")
 	return wVerbRegex.MatchString(cleanFormat)
 }
+
+func stripTypeArgs(expr ast.Expr) ast.Expr {
+	expr = ast.Unparen(expr)
+	switch x := expr.(type) {
+	case *ast.IndexExpr:
+		return ast.Unparen(x.X)
+	case *ast.IndexListExpr:
+		return ast.Unparen(x.X)
+	}
+	return expr
+}

@@ -203,7 +203,7 @@ Functions whose returned error never needs wrapping — typically
 error-decorating helpers like `connectrpc.com/connect.NewError` that take an
 already-wrapped error and return it, so the trace is already attached.
 
-`errors.AsType` `errors.Join`, `errors.Unwrap`, are ignored by default.
+`errors.AsType`, `errors.Join`, `errors.Unwrap`, are ignored by default.
 
 Type: list of fully-qualified function names, formatted
 `<import-path>.<Func>` or `<import-path>.<Type>.<Method>`.

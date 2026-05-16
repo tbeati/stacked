@@ -577,7 +577,7 @@ func (a *analyzer) shouldWrapCall(call *ast.CallExpr) bool {
 
 func (a *analyzer) isStackedWrapCall(call *ast.CallExpr) bool {
 	var ident *ast.Ident
-	switch fun := ast.Unparen(call.Fun).(type) {
+	switch fun := stripTypeArgs(call.Fun).(type) {
 	case *ast.SelectorExpr:
 		ident = fun.Sel
 	case *ast.Ident:
@@ -606,7 +606,7 @@ func (a *analyzer) isStackedWrapCall(call *ast.CallExpr) bool {
 
 func (a *analyzer) isInternalCall(call *ast.CallExpr) bool {
 	var ident *ast.Ident
-	switch fun := ast.Unparen(call.Fun).(type) {
+	switch fun := stripTypeArgs(call.Fun).(type) {
 	case *ast.FuncLit:
 		return true
 	case *ast.SelectorExpr:
@@ -766,7 +766,7 @@ func (a *analyzer) isIteratorPull(call *ast.CallExpr) bool {
 
 func (a *analyzer) isCalledFunctionInSet(call *ast.CallExpr, isFunctionInSet func(function string) bool) (bool, string) {
 	var ident *ast.Ident
-	switch fun := ast.Unparen(call.Fun).(type) {
+	switch fun := stripTypeArgs(call.Fun).(type) {
 	case *ast.Ident:
 		ident = fun
 	case *ast.SelectorExpr:
