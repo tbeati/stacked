@@ -142,6 +142,11 @@ It only flags errors at the point they cross into your code. That covers:
 
 Run it with `-fix` to apply the wrapping automatically, making adoption of `stacked` in an existing codebase a single-pass operation.
 
+There are two ways to run the linter: as a [standalone
+binary](#standalone-binary), or as a [golangci-lint
+plugin](#golangci-lint-plugin). Both apply
+the same rules and accept the same [configuration](#configuration).
+
 ### Example
 
 ```go
@@ -175,19 +180,20 @@ err := tx.Rollback() //nolint:stacked
 
 ### Configuration
 
-Three options tune what the linter considers worth wrapping. They apply to
-both run modes — only the file they live in differs (see below).
+Three options tune what the linter considers worth wrapping. The options
+are the same whether you run the standalone binary or the golangci-lint
+plugin, but the configuration file differs, as shown in each section below.
 
-| Option | What it does |
-|---|---|
-| `packages-treated-as-external` | Packages treated as third-party even though they're in your module — typically generated code. Errors crossing out of them are reported; errors produced *inside* them are not. |
-| `ignored-functions` | Fully-qualified functions whose returned error never needs wrapping — typically error-decorating helpers like `connectrpc.com/connect.NewError` that take an already-wrapped error and return it, so the trace is already attached. |
-| `check-function-arguments` | Functions whose Nth argument is a sentinel error passed *in* for comparison, not produced — so it shouldn't be wrapped (e.g. the target of `errors.Is`). |
+| Option | Type / format | What it does |
+|---|---|---|
+| `packages-treated-as-external` | List of package import paths. Example: `["example.com/generated"]`. | Packages treated as third-party even though they're in your module — typically generated code. Errors crossing out of them are reported; errors produced *inside* them are not. |
+| `ignored-functions` | List of fully-qualified function names, formatted `<import-path>.<Func>` or `<import-path>.<Type>.<Method>` (the standard library uses its short package name, e.g. `errors.Join`). Example: `["connectrpc.com/connect.NewError"]`. | Functions whose returned error never needs wrapping — typically error-decorating helpers like `connectrpc.com/connect.NewError` that take an already-wrapped error and return it, so the trace is already attached. |
+| `check-function-arguments` | List of objects with `function` (a fully-qualified name in the same format as above) and `argument` (the **1-based** position of the error argument). Example: `{ "function": "github.com/stretchr/testify/require.ErrorIs", "argument": 3 }`. | Functions whose Nth argument is a sentinel error passed *in* for comparison, not produced — so it shouldn't be wrapped (e.g. the target of `errors.Is`). |
 
 `errors.Join`, `errors.Unwrap`, `errors.Is` (arg 2), and `errors.As` (arg 2)
 are always handled for you — you don't need to list them.
 
-### Native (standalone binary)
+### Standalone binary
 
 Install and run the `singlechecker` binary:
 
@@ -218,7 +224,7 @@ plugin](https://golangci-lint.run/plugins/module-plugins/). Reference the
 plugin in `.custom-gcl.yml`:
 
 ```yaml
-version: v1.64.0
+version: v2.12.2
 plugins:
   - module: github.com/tbeati/stacked/linter
     import: github.com/tbeati/stacked/linter/gclplugin
@@ -235,16 +241,23 @@ golangci-lint custom
 [Configuration](#configuration) goes under the plugin's `settings`:
 
 ```yaml
+version: "2"
+
 linters:
+  default: none
   enable:
     - stacked
-linters-settings:
-  custom:
-    stacked:
-      type: module
-      settings:
-        packages-treated-as-external: ["example.com/generated"]
-        ignored-functions: ["connectrpc.com/connect.NewError"]
+  settings:
+    custom:
+      stacked:
+        type: module
+        description: Reports errors not wrapped with stacked.
+        settings:
+          packages-treated-as-external: ["example.com/generated"]
+          ignored-functions: ["connectrpc.com/connect.NewError"]
+          check-function-arguments:
+            - function: github.com/stretchr/testify/require.ErrorIs
+              argument: 3
 ```
 
 Run the resulting `./custom-gcl run ./...` as usual; `--fix` applies the
