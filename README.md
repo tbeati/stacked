@@ -3,13 +3,14 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/tbeati/stacked.svg)](https://pkg.go.dev/github.com/tbeati/stacked)
 [![License](https://img.shields.io/github/license/tbeati/stacked)](LICENSE)
 
-`stacked` is a Go library that attaches stack traces to your errors right at their source. While standard Go error handling often leaves you guessing where an issue actually originated as it bubbles up through intermediate functions, `stacked` captures the context the moment the error is produced.
+`stacked` is a Go library that attaches stack traces to your errors right at their source, with a linter that enforces wrapping at every error site. While standard Go error handling often leaves you guessing where an issue actually originated as it bubbles up through intermediate functions, `stacked` captures the context the moment the error is produced.
 
-When paired with its dedicated linter, `stacked` allows you to enforce a strict "wrap at the source" policy across your entire codebase, offering a seamless debugging experience:
+The linter enforces this "wrap at the source" policy across your entire codebase, offering a seamless debugging experience:
 
 * **Zero Guesswork:** By capturing the exact function, file, and line number where the error occurred, it cuts down debugging time drastically.
-* **Foolproof Coverage:** The linter acts as a safety net, guaranteeing that no error is left unwrapped before your code even compiles.
+* **Foolproof Coverage:** The linter acts as a safety net, guaranteeing that no error is left unwrapped.
 * **Frictionless Integration:** Wrapping is idempotent (the first wrap wins) and fully compatible with the standard library (`errors.Is`, `errors.AsType`, and `errors.Unwrap`), meaning your existing error-handling logic remains completely intact.
+* **Effortless Adoption:** Migrating an existing codebase doesn't require a tedious manual rewrite. Run the linter with the `-fix` flag to automatically apply wrapping everywhere in a single pass.
 
 Beyond standard errors, `stacked` provides a `Recover` utility to catch panics and convert them into `stacked` errors. This allows you to log the panic's stack trace using your own custom format.
 
@@ -123,3 +124,128 @@ stacked.IgnoreFunc(func(err error) bool {
 // Now wrapping these is a no-op — no stack trace attached.
 err := stacked.Wrap(row.Scan(&v)) // sql.ErrNoRows passes straight through
 ```
+
+## Linter
+
+`stacked-linter` reports every error your code leaves unwrapped.
+
+It only flags errors at the point they cross into your code. That covers:
+
+* Errors returned by functions outside your module (third-party or
+  standard-library packages).
+* Errors returned by methods called through an interface, since the
+  concrete implementation behind it is unknown.
+* Errors used from a constant or package-level variable, such as returning
+  `sql.ErrNoRows` or your own `ErrNotFound`.
+* Errors built from a literal, such as `&MyError{…}`.
+* Errors received from channels.
+
+Run it with `-fix` to apply the wrapping automatically, making adoption of `stacked` in an existing codebase a single-pass operation.
+
+### Example
+
+```go
+func loadConfig() ([]byte, error) {
+	return os.ReadFile("/etc/app/config.yaml") // reported: error returned by os.ReadFile is not wrapped with stacked
+}
+```
+
+Applying the suggested fix yields:
+
+```go
+func loadConfig() ([]byte, error) {
+	return stacked.Wrap2(os.ReadFile("/etc/app/config.yaml"))
+}
+```
+
+### Suppressing a diagnostic
+
+With the standalone binary, use the `//stacked:disable` directive:
+
+```go
+err := tx.Rollback() //stacked:disable
+```
+
+Under golangci-lint, use the standard `nolint` directive with the linter
+name:
+
+```go
+err := tx.Rollback() //nolint:stacked
+```
+
+### Configuration
+
+Three options tune what the linter considers worth wrapping. They apply to
+both run modes — only the file they live in differs (see below).
+
+| Option | What it does |
+|---|---|
+| `packages-treated-as-external` | Packages treated as third-party even though they're in your module — typically generated code. Errors crossing out of them are reported; errors produced *inside* them are not. |
+| `ignored-functions` | Fully-qualified functions whose returned error never needs wrapping — typically error-decorating helpers like `connectrpc.com/connect.NewError` that take an already-wrapped error and return it, so the trace is already attached. |
+| `check-function-arguments` | Functions whose Nth argument is a sentinel error passed *in* for comparison, not produced — so it shouldn't be wrapped (e.g. the target of `errors.Is`). |
+
+`errors.Join`, `errors.Unwrap`, `errors.Is` (arg 2), and `errors.As` (arg 2)
+are always handled for you — you don't need to list them.
+
+### Native (standalone binary)
+
+Install and run the `singlechecker` binary:
+
+```sh
+go install github.com/tbeati/stacked/linter/cmd/stacked-linter@latest
+
+stacked-linter ./...        # report
+stacked-linter -fix ./...   # report and apply suggested fixes
+```
+
+[Configuration](#configuration) goes in an optional `stacked.json` in the
+working directory:
+
+```json
+{
+    "packages-treated-as-external": ["example.com/generated"],
+    "ignored-functions": ["connectrpc.com/connect.NewError"],
+    "check-function-arguments": [
+        { "Function": "github.com/stretchr/testify/require.ErrorIs", "Argument": 3 }
+    ]
+}
+```
+
+### golangci-lint plugin
+
+`stacked` ships as a [golangci-lint module
+plugin](https://golangci-lint.run/plugins/module-plugins/). Reference the
+plugin in `.custom-gcl.yml`:
+
+```yaml
+version: v1.64.0
+plugins:
+  - module: github.com/tbeati/stacked/linter
+    import: github.com/tbeati/stacked/linter/gclplugin
+    version: latest
+```
+
+Build the custom binary and enable the linter (named `stacked`) in
+`.golangci.yml`:
+
+```sh
+golangci-lint custom
+```
+
+[Configuration](#configuration) goes under the plugin's `settings`:
+
+```yaml
+linters:
+  enable:
+    - stacked
+linters-settings:
+  custom:
+    stacked:
+      type: module
+      settings:
+        packages-treated-as-external: ["example.com/generated"]
+        ignored-functions: ["connectrpc.com/connect.NewError"]
+```
+
+Run the resulting `./custom-gcl run ./...` as usual; `--fix` applies the
+suggested fixes.
