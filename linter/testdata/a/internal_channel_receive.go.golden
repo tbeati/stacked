@@ -104,3 +104,64 @@ func channelReceiveChannelSendInternal() {
 	errChan <- stacked.Wrap(<-errChan) // want "^error received from errChan is not wrapped with stacked$"
 	errChan <- stacked.Wrap(<-errChan)
 }
+
+func channelReceiveSelectInternal() {
+	{
+		select {
+		case err := <-errChan: // want "^error received from errChan is not wrapped with stacked$"
+			_ = err
+		}
+	}
+
+	{
+		var err error
+		select {
+		case err = <-errChan: // want "^error received from errChan is not wrapped with stacked$"
+			_ = err
+		}
+	}
+
+	{
+		select {
+		case err, ok := <-errChan: // want "^error received from errChan is not wrapped with stacked$"
+			_, _ = err, ok
+		}
+	}
+
+	{
+		select {
+		case <-errChan:
+		}
+	}
+
+	{
+		var errChanSend chan error
+		select {
+		case errChanSend <- stacked.Wrap(<-errChan): // want "^error received from errChan is not wrapped with stacked$"
+		}
+	}
+
+	{
+		select {
+		case err := (<-errChan): // want "^error received from errChan is not wrapped with stacked$"
+			_ = err
+		}
+	}
+
+	{
+		select {
+		case err := <-(errChan): // want "^error received from errChan is not wrapped with stacked$"
+			_ = err
+		}
+	}
+
+	{
+		select {
+		case <-func() chan error {
+			err := stacked.Wrap(<-errChan) // want "^error received from errChan is not wrapped with stacked$"
+			_ = err
+			return errChan
+		}():
+		}
+	}
+}

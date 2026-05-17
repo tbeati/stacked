@@ -293,7 +293,8 @@ func (a *analyzer) checkAssignment(lhs, rhs []ast.Expr) {
 	if len(lhs) == len(rhs) {
 		for i := range lhs {
 			if !isBlankIdent(lhs[i]) && a.shouldWrap(rhs[i]) {
-				a.report(rhs[i], isError(a.pass.TypesInfo.TypeOf(lhs[i])))
+				autoFixable := isError(a.pass.TypesInfo.TypeOf(lhs[i])) && !a.inSelectCommClause()
+				a.report(rhs[i], autoFixable)
 				return
 			}
 		}
@@ -312,6 +313,15 @@ func (a *analyzer) checkAssignment(lhs, rhs []ast.Expr) {
 			}
 		}
 	}
+}
+
+func (a *analyzer) inSelectCommClause() bool {
+	n := len(a.stack)
+	if n < 2 {
+		return false
+	}
+	clause, ok := a.stack[n-2].(*ast.CommClause)
+	return ok && clause.Comm == a.stack[n-1]
 }
 
 func (a *analyzer) report(expr ast.Expr, autoFixable bool) {
