@@ -937,6 +937,10 @@ func (a *analyzer) isErrorExpectedInCallArgs(call *ast.CallExpr, argIndex, argCo
 func (a *analyzer) isErrorExpectedInLit(lit *ast.CompositeLit, elt ast.Expr, eltIndex int) bool {
 	litType := a.pass.TypesInfo.TypeOf(lit)
 
+	if ptr, ok := litType.Underlying().(*types.Pointer); ok {
+		litType = ptr.Elem()
+	}
+
 	var expectedType types.Type
 
 	switch litType := litType.Underlying().(type) {

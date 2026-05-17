@@ -242,6 +242,18 @@ func compositeLiterals() {
 	_ = [1]error{
 		stacked.Wrap(generated.ErrGlobal), // want "^generated.ErrGlobal is not wrapped with stacked$"
 	}
+
+	_ = []*structWithErrorField{
+		{stacked.Wrap(generated.ErrGlobal)}, // want "^generated.ErrGlobal is not wrapped with stacked$"
+	}
+
+	_ = [1]*structWithErrorField{
+		{stacked.Wrap(generated.ErrGlobal)}, // want "^generated.ErrGlobal is not wrapped with stacked$"
+	}
+
+	_ = map[string]*structWithErrorField{
+		"": {stacked.Wrap(generated.ErrGlobal)}, // want "^generated.ErrGlobal is not wrapped with stacked$"
+	}
 }
 
 func rangeWithoutIterator() {

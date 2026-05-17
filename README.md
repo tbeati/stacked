@@ -245,7 +245,7 @@ working directory:
 
 ```json
 {
-    "packages-treated-as-external": ["example.com/generated"],
+    "packages-treated-as-external": ["your-module/generated"],
     "ignored-functions": ["connectrpc.com/connect.NewError"],
     "check-function-arguments": [
         { "function": "github.com/stretchr/testify/require.ErrorIs", "argument": 3 }
@@ -289,7 +289,7 @@ linters:
         type: module
         description: Reports errors not wrapped with stacked.
         settings:
-          packages-treated-as-external: ["example.com/generated"]
+          packages-treated-as-external: ["your-module/generated"]
           ignored-functions: ["connectrpc.com/connect.NewError"]
           check-function-arguments:
             - function: github.com/stretchr/testify/require.ErrorIs
