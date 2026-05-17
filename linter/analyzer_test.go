@@ -14,6 +14,10 @@ func Test(t *testing.T) {
 			"testdata/generated.IgnoredStruct.IgnoredMethod",
 			"testdata/generated.IgnoredInterface.IgnoredMethod",
 		},
+		IgnoredTypes: []string{
+			"testdata/generated.WrappedError",
+			"testdata/generated.GenericWrappedError",
+		},
 	}
 
 	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), NewAnalyzer(&config),

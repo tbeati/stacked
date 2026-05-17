@@ -26,6 +26,23 @@ func (err StructError) Error() string {
 	return err.Message
 }
 
+type WrappedError struct {
+	err error
+}
+
+func (e WrappedError) Error() string {
+	return e.err.Error()
+}
+
+type GenericWrappedError[T any] struct {
+	err error
+	val T
+}
+
+func (e GenericWrappedError[T]) Error() string {
+	return e.err.Error()
+}
+
 func SingleReturn() error {
 	return nil
 }

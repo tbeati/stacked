@@ -20,9 +20,11 @@ const stackedImportPath = "github.com/tbeati/stacked"
 type Config struct {
 	PackagesTreatedAsExternal []string           `json:"packages-treated-as-external"`
 	IgnoredFunctions          []string           `json:"ignored-functions"`
+	IgnoredTypes              []string           `json:"ignored-types"`
 	CheckFunctionArguments    []FunctionArgument `json:"check-function-arguments"`
 
 	ignoredFunctionsMap       map[string]struct{}
+	ignoredTypesMap           map[string]struct{}
 	checkFunctionArgumentsMap map[string]int
 }
 
@@ -35,6 +37,11 @@ func (c *Config) init() {
 	c.ignoredFunctionsMap = make(map[string]struct{}, len(c.IgnoredFunctions))
 	for _, fun := range c.IgnoredFunctions {
 		c.ignoredFunctionsMap[fun] = struct{}{}
+	}
+
+	c.ignoredTypesMap = make(map[string]struct{}, len(c.IgnoredTypes))
+	for _, t := range c.IgnoredTypes {
+		c.ignoredTypesMap[t] = struct{}{}
 	}
 
 	c.checkFunctionArgumentsMap = make(map[string]int, len(c.CheckFunctionArguments))
@@ -55,6 +62,11 @@ func (c *Config) isPackageTreatedAsExternal(pkg string) bool {
 
 func (c *Config) isIgnoredFunction(function string) bool {
 	_, found := c.ignoredFunctionsMap[function]
+	return found
+}
+
+func (c *Config) isIgnoredType(t string) bool {
+	_, found := c.ignoredTypesMap[t]
 	return found
 }
 
@@ -490,6 +502,10 @@ func (a *analyzer) shouldWrap(expr ast.Expr) bool {
 		return false
 	}
 
+	if a.isIgnoredType(a.pass.TypesInfo.TypeOf(expr)) {
+		return false
+	}
+
 	expr = ast.Unparen(expr)
 	switch expr := expr.(type) {
 	case *ast.BasicLit:
@@ -513,6 +529,34 @@ func (a *analyzer) isIgnoredLine(expr ast.Expr) bool {
 	line := a.pass.Fset.Position(expr.Pos()).Line
 	_, isIgnored := a.ignoredLines[a.currentFile()][line]
 	return isIgnored
+}
+
+func (a *analyzer) isIgnoredType(t types.Type) bool {
+	if t == nil {
+		return false
+	}
+
+	t = types.Unalias(t)
+	for {
+		ptr, ok := t.(*types.Pointer)
+		if !ok {
+			break
+		}
+		t = types.Unalias(ptr.Elem())
+	}
+
+	named, ok := t.(*types.Named)
+	if !ok {
+		return false
+	}
+	named = named.Origin()
+
+	obj := named.Obj()
+	if obj.Pkg() == nil {
+		return false
+	}
+
+	return a.config.isIgnoredType(obj.Pkg().Path() + "." + obj.Name())
 }
 
 func (a *analyzer) shouldWrapBasicLit(expr *ast.BasicLit) bool {
