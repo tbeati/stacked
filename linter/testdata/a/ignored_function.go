@@ -33,6 +33,17 @@ func assignmentIgnoredFunction() {
 	err = errors.Unwrap(err)
 }
 
+func panicArgument() {
+	panic(fs.ErrNotExist)
+	panic(generated.SingleReturn())
+	panic("boom")
+
+	{
+		panic := func(err error) {}
+		panic(fs.ErrNotExist) // want "^fs\\.ErrNotExist is not wrapped with stacked$"
+	}
+}
+
 func errorCheckFunctions() {
 	var err error
 	errors.Is(err, fs.ErrNotExist)

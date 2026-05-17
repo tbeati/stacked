@@ -168,6 +168,10 @@ func (a *analyzer) analyze() {
 				return true
 			}
 
+			if a.isPanicCall(node) {
+				return true
+			}
+
 			isTypeConversion := a.isTypeConversion(node)
 			isErrorCheckCall, argumentIndex := a.isErrorCheckCall(node)
 
@@ -227,6 +231,14 @@ func (a *analyzer) enclosingFunctionSignature() *types.Signature {
 	}
 
 	return nil
+}
+
+func (a *analyzer) isPanicCall(call *ast.CallExpr) bool {
+	ident, ok := ast.Unparen(call.Fun).(*ast.Ident)
+	if !ok {
+		return false
+	}
+	return a.pass.TypesInfo.ObjectOf(ident) == types.Universe.Lookup("panic")
 }
 
 func (a *analyzer) isErrorCheckCall(call *ast.CallExpr) (bool, int) {
