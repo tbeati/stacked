@@ -305,7 +305,7 @@ func (a *analyzer) checkAssignment(lhs, rhs []ast.Expr) {
 	if len(lhs) == len(rhs) {
 		for i := range lhs {
 			if !isBlankIdent(lhs[i]) && a.shouldWrap(rhs[i]) {
-				autoFixable := isError(a.pass.TypesInfo.TypeOf(lhs[i])) && !a.inSelectCommClause()
+				autoFixable := acceptsError(a.pass.TypesInfo.TypeOf(lhs[i])) && !a.inSelectCommClause()
 				a.report(rhs[i], autoFixable)
 				return
 			}
@@ -316,7 +316,7 @@ func (a *analyzer) checkAssignment(lhs, rhs []ast.Expr) {
 			if a.shouldWrap(rhs[0]) {
 				assignedErrorVariable := lhs[a.errorReturnIndex(unparenRhs)]
 				if !isBlankIdent(assignedErrorVariable) {
-					a.report(rhs[0], isError(a.pass.TypesInfo.TypeOf(assignedErrorVariable)))
+					a.report(rhs[0], acceptsError(a.pass.TypesInfo.TypeOf(assignedErrorVariable)))
 				}
 			}
 		case *ast.UnaryExpr:
@@ -856,7 +856,7 @@ func (a *analyzer) shouldWrapIterator(expr ast.Expr) (bool, bool, int) {
 	switch yieldParams.Len() {
 	case 1:
 		yieldParamType := yieldParams.At(0).Type()
-		return implementsError(yieldParamType), isError(yieldParamType), 1
+		return implementsError(yieldParamType), acceptsError(yieldParamType), 1
 	case 2:
 		yieldParam0Type := yieldParams.At(0).Type()
 		yieldParam1Type := yieldParams.At(1).Type()
@@ -873,7 +873,7 @@ func (a *analyzer) shouldWrapIterator(expr ast.Expr) (bool, bool, int) {
 		}
 
 		if param1ImplementsError {
-			return true, isError(yieldParam1Type), 2
+			return true, acceptsError(yieldParam1Type), 2
 		}
 	}
 
@@ -884,16 +884,16 @@ func (a *analyzer) isErrorExpectedInReturn(resultIndex int, returnedItemCount in
 	results := a.enclosingFunctionSignature().Results()
 
 	if returnedItemCount == 1 && results.Len() > 1 {
-		if isError(results.At(results.Len() - 1).Type()) {
+		if acceptsError(results.At(results.Len() - 1).Type()) {
 			return true
 		}
-		if isError(results.At(results.Len() - 2).Type()) {
+		if acceptsError(results.At(results.Len() - 2).Type()) {
 			return true
 		}
 		return false
 	}
 
-	return isError(results.At(resultIndex).Type())
+	return acceptsError(results.At(resultIndex).Type())
 }
 
 func (a *analyzer) isErrorExpectedInCallArgs(call *ast.CallExpr, argIndex, argCount int) bool {
@@ -904,15 +904,15 @@ func (a *analyzer) isErrorExpectedInCallArgs(call *ast.CallExpr, argIndex, argCo
 		params := sig.Params()
 
 		if argCount == 1 && params.Len() > 1 {
-			if sig.Variadic() && isError(params.At(params.Len()-1).Type().Underlying().(*types.Slice).Elem()) {
+			if sig.Variadic() && acceptsError(params.At(params.Len()-1).Type().Underlying().(*types.Slice).Elem()) {
 				return true
 			}
 
-			if isError(params.At(params.Len() - 1).Type()) {
+			if acceptsError(params.At(params.Len() - 1).Type()) {
 				return true
 			}
 
-			if isError(params.At(params.Len() - 2).Type()) {
+			if acceptsError(params.At(params.Len() - 2).Type()) {
 				return true
 			}
 		} else {
@@ -925,10 +925,10 @@ func (a *analyzer) isErrorExpectedInCallArgs(call *ast.CallExpr, argIndex, argCo
 				argType = params.At(argIndex).Type()
 			}
 
-			return isError(argType)
+			return acceptsError(argType)
 		}
 	} else if a.pass.TypesInfo.Types[call.Fun].IsType() {
-		return isError(funType)
+		return acceptsError(funType)
 	}
 
 	return false
@@ -956,10 +956,10 @@ func (a *analyzer) isErrorExpectedInLit(lit *ast.CompositeLit, elt ast.Expr, elt
 		expectedType = litType.Elem()
 	}
 
-	return isError(expectedType)
+	return acceptsError(expectedType)
 }
 
 func (a *analyzer) isErrorExpectedInSend(send *ast.SendStmt) bool {
 	chanType := a.pass.TypesInfo.TypeOf(send.Chan).Underlying().(*types.Chan)
-	return isError(chanType.Elem())
+	return acceptsError(chanType.Elem())
 }

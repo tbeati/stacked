@@ -19,8 +19,8 @@ func implementsError(t types.Type) bool {
 	return types.Implements(t, errorTypeInterface)
 }
 
-func isError(t types.Type) bool {
-	return types.Identical(t, errorType)
+func acceptsError(t types.Type) bool {
+	return t != nil && types.AssignableTo(errorType, t)
 }
 
 func isBool(t types.Type) bool {

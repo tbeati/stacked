@@ -2,12 +2,14 @@ package a
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"iter"
 	"net"
 	"os"
 
 	"github.com/tbeati/stacked"
+
 	"testdata/b"
 	"testdata/generated"
 )
@@ -245,6 +247,28 @@ func compositeLiterals() {
 func rangeWithoutIterator() {
 	for range 1 {
 	}
+}
+
+func anyDestinationCallArg() {
+	_ = fmt.Errorf("error: %w", stacked.Wrap(os.Chdir("/"))) // want "^error returned by os.Chdir is not wrapped with stacked$"
+	_ = fmt.Errorf("error: %w", stacked.Wrap(os.Chdir("/")))
+}
+
+func anyDestinationAssignment() {
+	var x any
+	x = stacked.Wrap(os.Chdir("/")) // want "^error returned by os.Chdir is not wrapped with stacked$"
+	x = stacked.Wrap(os.Chdir("/"))
+	_ = x
+}
+
+func anyDestinationReturn() any {
+	return stacked.Wrap(os.Chdir("/")) // want "^error returned by os.Chdir is not wrapped with stacked$"
+	return stacked.Wrap(os.Chdir("/"))
+}
+
+func anyDestinationLiteral() {
+	_ = []any{stacked.Wrap(os.Chdir("/"))} // want "^error returned by os.Chdir is not wrapped with stacked$"
+	_ = []any{stacked.Wrap(os.Chdir("/"))}
 }
 
 func genericCalls() {
