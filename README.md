@@ -180,7 +180,7 @@ err := tx.Rollback() //nolint:stacked
 
 ### Configuration
 
-Three options tune what the linter considers worth wrapping. The options
+Four options tune what the linter considers worth wrapping. The options
 are the same whether you run the standalone binary or the golangci-lint
 plugin, but the configuration file differs, as shown in each section below.
 
@@ -210,6 +210,17 @@ Type: list of fully-qualified function names, formatted
 
 ```json
 ["connectrpc.com/connect.NewError"]
+```
+
+#### `ignored-types`
+
+Types whose error values never need wrapping — typically error-decorator
+types that hold an already-wrapped error, so the trace is already attached.
+
+Type: list of fully-qualified type names, formatted `<import-path>.<Type>`.
+
+```json
+["net/url.Error"]
 ```
 
 #### `check-function-arguments`
@@ -247,6 +258,7 @@ working directory:
 {
     "packages-treated-as-external": ["your-module/generated"],
     "ignored-functions": ["connectrpc.com/connect.NewError"],
+    "ignored-types": ["net/url.Error"],
     "check-function-arguments": [
         { "function": "github.com/stretchr/testify/require.ErrorIs", "argument": 3 }
     ]
@@ -291,6 +303,7 @@ linters:
         settings:
           packages-treated-as-external: ["your-module/generated"]
           ignored-functions: ["connectrpc.com/connect.NewError"]
+          ignored-types: ["net/url.Error"]
           check-function-arguments:
             - function: github.com/stretchr/testify/require.ErrorIs
               argument: 3
