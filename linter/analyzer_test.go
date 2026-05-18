@@ -20,6 +20,7 @@ func Test(t *testing.T) {
 		GeneratedFiles: []string{
 			"**/generated/*",
 		},
+		WrapChannelReceives: true,
 	}
 
 	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), NewAnalyzer(&config),

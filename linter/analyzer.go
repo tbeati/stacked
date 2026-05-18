@@ -23,6 +23,7 @@ type Config struct {
 	IgnoredTypes           []string           `json:"ignored-types"`
 	CheckFunctionArguments []FunctionArgument `json:"check-function-arguments"`
 	GeneratedFiles         []string           `json:"generated-files"`
+	WrapChannelReceives    bool               `json:"wrap-channel-receives"`
 
 	ignoredFunctionsMap       map[string]struct{}
 	ignoredTypesMap           map[string]struct{}
@@ -646,6 +647,10 @@ func (a *analyzer) shouldWrapUnary(expr *ast.UnaryExpr) bool {
 		return implementsError(exprType)
 	default:
 		if expr.Op == token.ARROW {
+			if !a.config.WrapChannelReceives {
+				return false
+			}
+
 			tuple, isTuple := exprType.Underlying().(*types.Tuple)
 			if isTuple {
 				return implementsError(tuple.At(0).Type())

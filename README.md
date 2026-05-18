@@ -243,6 +243,27 @@ Type: list of file glob patterns.
 ["**/*_gen.go"]
 ```
 
+#### `wrap-channel-receives`
+
+Whether to report errors received from channels (e.g., `err := <-errChan`).
+
+In Go, channels are primarily used for internal orchestration. Wrapping an error
+received from a channel is often redundant if the sender already wrapped it.
+Furthermore, channel receives inside `select` statements cannot be easily
+autofixed (as function calls are not allowed in `case` receive operations),
+which can lead to noisy manual refactoring.
+
+This option is useful only when consuming channels from third-party libraries
+that don't provide stack traces, such as `fsnotify.Watcher.Errors`.
+
+Type: boolean.
+
+```json
+{
+    "wrap-channel-receives": true
+}
+```
+
 ### Standalone binary
 
 Install and run the `singlechecker` binary:
