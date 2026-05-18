@@ -335,4 +335,3 @@ linters:
 
 Run the resulting `./custom-gcl run ./...` as usual; `--fix` applies the
 suggested fixes.
-suggested fixes.
