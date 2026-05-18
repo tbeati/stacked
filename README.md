@@ -184,19 +184,6 @@ Four options tune what the linter considers worth wrapping. The options
 are the same whether you run the standalone binary or the golangci-lint
 plugin, but the configuration file differs, as shown in each section below.
 
-#### `packages-treated-as-external`
-
-Packages treated as third-party even though they're in your module —
-typically generated code. The linter ignores these packages,
-but treats errors they return to *your* code as crossing
-in from outside, so those calls still need wrapping.
-
-Type: list of package import paths.
-
-```json
-["your-module/generated"]
-```
-
 #### `ignored-functions`
 
 Functions whose returned error never needs wrapping — typically
@@ -240,6 +227,22 @@ argument).
 
 The `target` arguments of `errors.Is` and `errors.As` are ignored by default.
 
+#### `generated-files`
+
+Files treated as third-party even though they're in your module —
+typically generated code. The linter ignores these files,
+but treats errors returned by functions defined in them as crossing
+in from outside, so those calls still need wrapping.
+
+The linter automatically detects files with standard "Code generated"
+headers, but this option can be used for files that lack them.
+
+Type: list of file glob patterns.
+
+```json
+["**/*_gen.go"]
+```
+
 ### Standalone binary
 
 Install and run the `singlechecker` binary:
@@ -256,12 +259,12 @@ working directory:
 
 ```json
 {
-    "packages-treated-as-external": ["your-module/generated"],
     "ignored-functions": ["connectrpc.com/connect.NewError"],
     "ignored-types": ["net/url.Error"],
     "check-function-arguments": [
         { "function": "github.com/stretchr/testify/require.ErrorIs", "argument": 3 }
-    ]
+    ],
+    "generated-files": ["**/*_gen.go"]
 }
 ```
 
@@ -301,13 +304,14 @@ linters:
         type: module
         description: Reports errors not wrapped with stacked.
         settings:
-          packages-treated-as-external: ["your-module/generated"]
           ignored-functions: ["connectrpc.com/connect.NewError"]
           ignored-types: ["net/url.Error"]
           check-function-arguments:
             - function: github.com/stretchr/testify/require.ErrorIs
               argument: 3
+          generated-files: ["**/*_gen.go"]
 ```
 
 Run the resulting `./custom-gcl run ./...` as usual; `--fix` applies the
+suggested fixes.
 suggested fixes.

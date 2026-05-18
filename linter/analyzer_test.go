@@ -8,7 +8,6 @@ import (
 
 func Test(t *testing.T) {
 	config := Config{
-		PackagesTreatedAsExternal: []string{"testdata/generated"},
 		IgnoredFunctions: []string{
 			"testdata/generated.IgnoredFunction",
 			"testdata/generated.IgnoredStruct.IgnoredMethod",
@@ -18,10 +17,12 @@ func Test(t *testing.T) {
 			"testdata/generated.WrappedError",
 			"testdata/generated.GenericWrappedError",
 		},
+		GeneratedFiles: []string{
+			"**/generated/*",
+		},
 	}
 
 	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), NewAnalyzer(&config),
 		"testdata/a",
-		"testdata/generated",
 	)
 }

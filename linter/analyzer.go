@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/bmatcuk/doublestar/v4"
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/passes/inspect"
 	"golang.org/x/tools/go/ast/inspector"
@@ -18,10 +19,10 @@ import (
 const stackedImportPath = "github.com/tbeati/stacked"
 
 type Config struct {
-	PackagesTreatedAsExternal []string           `json:"packages-treated-as-external"`
-	IgnoredFunctions          []string           `json:"ignored-functions"`
-	IgnoredTypes              []string           `json:"ignored-types"`
-	CheckFunctionArguments    []FunctionArgument `json:"check-function-arguments"`
+	IgnoredFunctions       []string           `json:"ignored-functions"`
+	IgnoredTypes           []string           `json:"ignored-types"`
+	CheckFunctionArguments []FunctionArgument `json:"check-function-arguments"`
+	GeneratedFiles         []string           `json:"generated-files"`
 
 	ignoredFunctionsMap       map[string]struct{}
 	ignoredTypesMap           map[string]struct{}
@@ -50,16 +51,6 @@ func (c *Config) init() {
 	}
 }
 
-func (c *Config) isPackageTreatedAsExternal(pkg string) bool {
-	for _, genPkg := range c.PackagesTreatedAsExternal {
-		if strings.HasPrefix(pkg, genPkg) {
-			return true
-		}
-	}
-
-	return false
-}
-
 func (c *Config) isIgnoredFunction(function string) bool {
 	_, found := c.ignoredFunctionsMap[function]
 	return found
@@ -77,6 +68,14 @@ func (c *Config) isCheckFunction(function string) bool {
 
 func (c *Config) checkFunctionArgument(function string) int {
 	return c.checkFunctionArgumentsMap[function]
+}
+
+type IsGeneratedFact struct{}
+
+func (*IsGeneratedFact) AFact() {}
+
+func (*IsGeneratedFact) String() string {
+	return "isGenerated"
 }
 
 func NewAnalyzer(config *Config) *analysis.Analyzer {
@@ -108,13 +107,41 @@ func NewAnalyzer(config *Config) *analysis.Analyzer {
 		Doc:              "check for error not wrapped with stacked",
 		URL:              "https://github.com/tbeati/stacked",
 		RunDespiteErrors: false,
+		FactTypes:        []analysis.Fact{&IsGeneratedFact{}},
 		Requires:         []*analysis.Analyzer{inspect.Analyzer},
 		Run: func(pass *analysis.Pass) (interface{}, error) {
-			if config.isPackageTreatedAsExternal(pass.Pkg.Path()) {
-				return nil, nil
+			generatedFiles := make(map[*ast.File]struct{})
+
+			for _, file := range pass.Files {
+				isGenerated := ast.IsGenerated(file)
+				if !isGenerated {
+					filename := pass.Fset.Position(file.Pos()).Filename
+					for _, pattern := range config.GeneratedFiles {
+						matched, _ := doublestar.Match(pattern, filename)
+						if matched {
+							isGenerated = true
+							break
+						}
+					}
+				}
+
+				if isGenerated {
+					generatedFiles[file] = struct{}{}
+					for _, decl := range file.Decls {
+						funcDecl, ok := decl.(*ast.FuncDecl)
+						if !ok {
+							continue
+						}
+
+						obj := pass.TypesInfo.Defs[funcDecl.Name]
+						if obj != nil {
+							pass.ExportObjectFact(obj, &IsGeneratedFact{})
+						}
+					}
+				}
 			}
 
-			newAnalyzer(config, pass).analyze()
+			newAnalyzer(config, pass, generatedFiles).analyze()
 
 			return nil, nil
 		},
@@ -122,14 +149,15 @@ func NewAnalyzer(config *Config) *analysis.Analyzer {
 }
 
 type analyzer struct {
-	config       *Config
-	pass         *analysis.Pass
-	ignoredLines map[*ast.File]map[int]struct{}
+	config         *Config
+	pass           *analysis.Pass
+	ignoredLines   map[*ast.File]map[int]struct{}
+	generatedFiles map[*ast.File]struct{}
 
 	stack []ast.Node
 }
 
-func newAnalyzer(config *Config, pass *analysis.Pass) *analyzer {
+func newAnalyzer(config *Config, pass *analysis.Pass, generatedFiles map[*ast.File]struct{}) *analyzer {
 	ignoredLines := make(map[*ast.File]map[int]struct{})
 	for _, file := range pass.Files {
 		ignoredLines[file] = make(map[int]struct{})
@@ -144,9 +172,10 @@ func newAnalyzer(config *Config, pass *analysis.Pass) *analyzer {
 	}
 
 	return &analyzer{
-		config:       config,
-		pass:         pass,
-		ignoredLines: ignoredLines,
+		config:         config,
+		pass:           pass,
+		ignoredLines:   ignoredLines,
+		generatedFiles: generatedFiles,
 	}
 }
 
@@ -158,6 +187,14 @@ func (a *analyzer) analyze() {
 
 		if !push {
 			return true
+		}
+
+		file, ok := node.(*ast.File)
+		if ok {
+			_, isGenerated := a.generatedFiles[file]
+			if isGenerated {
+				return false
+			}
 		}
 
 		if a.enclosingFunctionSignature() == nil {
@@ -709,7 +746,7 @@ func (a *analyzer) isInternalCall(call *ast.CallExpr) bool {
 		return false
 	}
 
-	if a.config.isPackageTreatedAsExternal(pkg.Path()) {
+	if a.pass.ImportObjectFact(obj, &IsGeneratedFact{}) {
 		return false
 	}
 

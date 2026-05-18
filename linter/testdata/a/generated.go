@@ -12,6 +12,9 @@ func assignmentGenerated() {
 	var err error
 	_ = err
 
+	err = GenSingleReturn() // want "^error returned by GenSingleReturn is not wrapped with stacked$"
+	err = stacked.Wrap(GenSingleReturn())
+
 	err = generated.SingleReturn() // want "^error returned by generated.SingleReturn is not wrapped with stacked$"
 	err = stacked.Wrap(generated.SingleReturn())
 
