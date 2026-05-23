@@ -7,6 +7,7 @@ import (
 	"go/printer"
 	"go/token"
 	"go/types"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -18,7 +19,7 @@ import (
 
 const stackedImportPath = "github.com/tbeati/stacked"
 
-type Config struct {
+type Config struct { //nolint:govet
 	IgnoredFunctions       []string           `json:"ignored-functions"`
 	IgnoredTypes           []string           `json:"ignored-types"`
 	CheckFunctionArguments []FunctionArgument `json:"check-function-arguments"`
@@ -110,7 +111,7 @@ func NewAnalyzer(config *Config) *analysis.Analyzer {
 		RunDespiteErrors: false,
 		FactTypes:        []analysis.Fact{&IsGeneratedFact{}},
 		Requires:         []*analysis.Analyzer{inspect.Analyzer},
-		Run: func(pass *analysis.Pass) (interface{}, error) {
+		Run: func(pass *analysis.Pass) (any, error) {
 			generatedFiles := make(map[*ast.File]struct{})
 
 			for _, file := range pass.Files {
@@ -118,7 +119,11 @@ func NewAnalyzer(config *Config) *analysis.Analyzer {
 				if !isGenerated {
 					filename := pass.Fset.Position(file.Pos()).Filename
 					for _, pattern := range config.GeneratedFiles {
-						matched, _ := doublestar.Match(pattern, filename)
+						matched, err := doublestar.Match(pattern, filename)
+						if err != nil {
+							return nil, err
+						}
+
 						if matched {
 							isGenerated = true
 							break
@@ -271,8 +276,8 @@ func (a *analyzer) currentFile() *ast.File {
 }
 
 func (a *analyzer) enclosingFunctionSignature() *types.Signature {
-	for i := len(a.stack) - 1; i >= 0; i-- {
-		switch fun := a.stack[i].(type) {
+	for _, node := range slices.Backward(a.stack) {
+		switch fun := node.(type) {
 		case *ast.FuncDecl:
 			return a.pass.TypesInfo.ObjectOf(fun.Name).Type().Underlying().(*types.Signature)
 		case *ast.FuncLit:
@@ -457,7 +462,7 @@ func (a *analyzer) reportIterator(expr ast.Expr, autoFixable bool, returnValueCo
 
 	switch expr := ast.Unparen(expr).(type) {
 	case *ast.FuncLit:
-		msg = fmt.Sprintf("iterator literal is not wrapped with stacked")
+		msg = "iterator literal is not wrapped with stacked"
 	case *ast.UnaryExpr:
 		msg = fmt.Sprintf("iterator received from %s is not wrapped with stacked", a.exprToString(ast.Unparen(expr.X)))
 	case *ast.CallExpr:
@@ -496,7 +501,7 @@ func (a *analyzer) suggestedFixes(expr ast.Expr, wrapFuncName string) []analysis
 		TextEdits: []analysis.TextEdit{{
 			Pos:     expr.Pos(),
 			End:     expr.End(),
-			NewText: []byte(fmt.Sprintf("%s(%s)", wrapFuncName, a.exprToString(expr))),
+			NewText: fmt.Appendf(nil, "%s(%s)", wrapFuncName, a.exprToString(expr)),
 		}},
 	}}
 

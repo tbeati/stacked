@@ -7,8 +7,10 @@ import (
 	"strings"
 )
 
-var errorType types.Type
-var errorTypeInterface *types.Interface
+var (
+	errorType          types.Type
+	errorTypeInterface *types.Interface
+)
 
 func init() {
 	errorType = types.Universe.Lookup("error").Type()

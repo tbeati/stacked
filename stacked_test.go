@@ -31,7 +31,7 @@ func TestWrap_Nil(t *testing.T) {
 
 func TestWrap_IgnoredError(t *testing.T) {
 	err := Wrap(io.EOF)
-	if err != io.EOF {
+	if err != io.EOF { //nolint:errorlint
 		t.Errorf("Wrap(io.EOF) = %v; want io.EOF unchanged", err)
 	}
 }
@@ -44,7 +44,7 @@ func TestWrap_FreshError(t *testing.T) {
 	if !ok {
 		t.Fatalf("Wrap(orig) is %T; want *Error", wrapped)
 	}
-	if se.Err != orig {
+	if se.Err != orig { //nolint:errorlint
 		t.Errorf("wrapped.Err = %v; want %v", se.Err, orig)
 	}
 	if len(se.StackTrace) == 0 {
@@ -59,8 +59,8 @@ func TestWrap_DoubleWrapReturnsSame(t *testing.T) {
 	orig := errors.New("boom")
 	once := Wrap(orig)
 	twice := Wrap(once)
-	if once != twice {
-		t.Errorf("Wrap(Wrap(e)) produced a new error; want same pointer")
+	if once != twice { //nolint:errorlint
+		t.Error("Wrap(Wrap(e)) produced a new error; want same pointer")
 	}
 }
 
@@ -70,7 +70,7 @@ func TestWrap2_PassesValuesThrough(t *testing.T) {
 	if v != 42 {
 		t.Errorf("v = %d; want 42", v)
 	}
-	_, ok := errors.AsType[*Error](err)
+	_, ok := errors.AsType[*Error](err) //nolint:errcheck
 	if !ok {
 		t.Fatalf("err is %T; want *Error", err)
 	}
@@ -82,7 +82,7 @@ func TestWrap3_PassesValuesThrough(t *testing.T) {
 	if a != 1 || b != "two" {
 		t.Errorf("values = %d, %q; want 1, \"two\"", a, b)
 	}
-	_, ok := errors.AsType[*Error](err)
+	_, ok := errors.AsType[*Error](err) //nolint:errcheck
 	if !ok {
 		t.Fatalf("err is %T; want *Error", err)
 	}
@@ -94,7 +94,7 @@ func TestWrap4_PassesValuesThrough(t *testing.T) {
 	if a != 1 || b != "two" || c != 3.5 {
 		t.Errorf("values = %d, %q, %v; want 1, \"two\", 3.5", a, b, c)
 	}
-	_, ok := errors.AsType[*Error](err)
+	_, ok := errors.AsType[*Error](err) //nolint:errcheck
 	if !ok {
 		t.Fatalf("err is %T; want *Error", err)
 	}
@@ -103,10 +103,10 @@ func TestWrap4_PassesValuesThrough(t *testing.T) {
 func TestWrap5_PassesValuesThrough(t *testing.T) {
 	orig := errors.New("boom")
 	a, b, c, d, err := Wrap5(1, "two", 3.5, true, orig)
-	if a != 1 || b != "two" || c != 3.5 || d != true {
+	if a != 1 || b != "two" || c != 3.5 || d != true { //nolint:revive
 		t.Errorf("values = %d, %q, %v, %v", a, b, c, d)
 	}
-	_, ok := errors.AsType[*Error](err)
+	_, ok := errors.AsType[*Error](err) //nolint:errcheck
 	if !ok {
 		t.Fatalf("err is %T; want *Error", err)
 	}
@@ -117,7 +117,7 @@ func TestIgnore_SkipsWrap(t *testing.T) {
 	sentinel := errors.New("ignore me")
 	Ignore(sentinel)
 	got := Wrap(sentinel)
-	if got != sentinel {
+	if got != sentinel { //nolint:errorlint
 		t.Errorf("Wrap(ignored) = %v; want sentinel unchanged", got)
 	}
 }
@@ -141,7 +141,7 @@ func TestIgnoreFunc(t *testing.T) {
 	})
 	err := errors.New("ignore-by-func")
 	got := Wrap(err)
-	if got != err {
+	if got != err { //nolint:errorlint
 		t.Errorf("Wrap(matched-by-IgnoreFunc) = %v; want unchanged", got)
 	}
 }
@@ -194,7 +194,7 @@ func TestWrapSeq2(t *testing.T) {
 		t.Fatalf("err is %T; want *Error", gotErr)
 	}
 	if !se.iterator {
-		t.Errorf("iterator flag = false; want true")
+		t.Error("iterator flag = false; want true")
 	}
 }
 
@@ -202,9 +202,9 @@ func TestWrapPull_PlainError(t *testing.T) {
 	orig := errors.New("boom")
 	err, ok := WrapPull(orig, true)
 	if !ok {
-		t.Errorf("ok = false; want true (pass-through)")
+		t.Error("ok = false; want true (pass-through)")
 	}
-	_, ok = errors.AsType[*Error](err)
+	_, ok = errors.AsType[*Error](err) //nolint:errcheck
 	if !ok {
 		t.Fatalf("err is %T; want *Error", err)
 	}
@@ -214,8 +214,8 @@ func TestWrapPull_AlreadyWrappedNonIterator(t *testing.T) {
 	orig := errors.New("boom")
 	wrapped := Wrap(orig)
 	out, _ := WrapPull(wrapped, true)
-	if out != wrapped {
-		t.Errorf("WrapPull rewrapped a non-iterator *Error; want pass-through")
+	if out != wrapped { //nolint:errorlint
+		t.Error("WrapPull rewrapped a non-iterator *Error; want pass-through")
 	}
 }
 
@@ -231,7 +231,7 @@ func TestWrapPull_AfterWrapSeq(t *testing.T) {
 	}
 
 	out, _ := WrapPull(fromSeq, true)
-	if out == fromSeq {
+	if out == fromSeq { //nolint:errorlint
 		t.Fatal("WrapPull did not rewrap iterator-flagged error")
 	}
 	se, ok := errors.AsType[*Error](out)
@@ -239,17 +239,17 @@ func TestWrapPull_AfterWrapSeq(t *testing.T) {
 		t.Fatalf("out is %T; want *Error", out)
 	}
 	if se.iterator {
-		t.Errorf("rewrapped error still has iterator=true")
+		t.Error("rewrapped error still has iterator=true")
 	}
 }
 
 func TestWrapPull_IgnoredError(t *testing.T) {
 	out, ok := WrapPull(io.EOF, true)
-	if out != io.EOF {
+	if out != io.EOF { //nolint:errorlint
 		t.Errorf("WrapPull(io.EOF) = %v; want io.EOF unchanged", out)
 	}
 	if !ok {
-		t.Errorf("ok = false; want true (pass-through)")
+		t.Error("ok = false; want true (pass-through)")
 	}
 }
 
@@ -259,7 +259,7 @@ func TestWrapPull2(t *testing.T) {
 	if v != 42 || !ok {
 		t.Errorf("pass-through dropped: v=%d ok=%t; want 42, true", v, ok)
 	}
-	_, ok = errors.AsType[*Error](err)
+	_, ok = errors.AsType[*Error](err) //nolint:errcheck
 	if !ok {
 		t.Fatalf("err is %T; want *Error", err)
 	}
@@ -282,11 +282,11 @@ func TestStackTrace_Plain(t *testing.T) {
 
 func TestError_Methods(t *testing.T) {
 	orig := errors.New("boom")
-	wrapped := Wrap(orig).(*Error)
+	wrapped := Wrap(orig).(*Error) //nolint:errorlint
 	if wrapped.Error() != "boom" {
 		t.Errorf("Error() = %q; want \"boom\"", wrapped.Error())
 	}
-	if wrapped.Unwrap() != orig {
+	if wrapped.Unwrap() != orig { //nolint:errorlint
 		t.Errorf("Unwrap() = %v; want orig", wrapped.Unwrap())
 	}
 }
@@ -302,7 +302,7 @@ func TestRecover_PanicString(t *testing.T) {
 	if captured == nil {
 		t.Fatal("onPanic not called")
 	}
-	_, ok := errors.AsType[*Error](captured)
+	_, ok := errors.AsType[*Error](captured) //nolint:errcheck
 	if !ok {
 		t.Fatalf("captured is %T; want *Error", captured)
 	}
@@ -332,15 +332,13 @@ func TestRecover_PanicError(t *testing.T) {
 func TestRecover_Goexit(t *testing.T) {
 	var captured error
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		Recover(func() {
 			runtime.Goexit()
 		}, func(err error) {
 			captured = err
 		}, false)
-	}()
+	})
 	wg.Wait()
 
 	if !errors.Is(captured, ErrGoexitCalled) {

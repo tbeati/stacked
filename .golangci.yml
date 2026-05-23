@@ -1,0 +1,147 @@
+version: "2"
+
+linters:
+    default: none
+    enable:
+        # Default
+        - errcheck
+        - govet
+        - ineffassign
+        - staticcheck
+        - unused
+        # Optional
+        - asasalint
+        - bidichk
+        - bodyclose
+        - canonicalheader
+        - clickhouselint
+        - errorlint
+        - fatcontext
+        - gocheckcompilerdirectives
+        - gocritic
+        - gosec
+        - iface
+        - intrange
+        - iotamixing
+        - mirror
+        - modernize
+        - nakedret
+        - noctx
+        - noinlineerr
+        - nolintlint
+        - nosprintfhostport
+        - promlinter
+        - protogetter
+        - revive
+        - rowserrcheck
+        - sloglint
+        - sqlclosecheck
+        - tparallel
+        - usestdlibvars
+        - usetesting
+        - wastedassign
+        - whitespace
+    settings:
+        errcheck:
+            check-blank: true
+            exclude-functions:
+                - errors.AsType
+        govet:
+            enable-all: true
+        unused:
+            field-writes-are-uses: false
+        iface:
+            enable:
+                - identical
+                - unused
+                - unexported
+        nakedret:
+            max-func-lines: 0
+        nolintlint:
+            require-specific: true
+        revive:
+            rules:
+                - name: atomic
+                - name: bare-return
+                - name: bool-literal-in-expr
+                - name: call-to-gc
+                - name: constant-logical-expr
+                - name: context-as-argument
+                - name: context-keys-type
+                - name: datarace
+                - name: defer
+                - name: dot-imports
+                - name: duplicated-imports
+                - name: empty-block
+                - name: errorf
+                - name: forbidden-call-in-wg-go
+                - name: identical-branches
+                - name: identical-ifelseif-branches
+                - name: identical-ifelseif-conditions
+                - name: identical-switch-branches
+                - name: identical-switch-conditions
+                - name: if-return
+                - name: indent-error-flow
+                - name: inefficient-map-lookup
+                - name: package-directory-mismatch
+                - name: range
+                - name: redefines-builtin-id
+                - name: redundant-build-tag
+                - name: redundant-import-alias
+                - name: redundant-test-main-exit
+                - name: string-of-int
+                - name: superfluous-else
+                - name: time-date
+                - name: time-equal
+                - name: unconditional-recursion
+                - name: unexported-naming
+                - name: unexported-return
+                - name: unnecessary-if
+                - name: unnecessary-format
+                - name: unnecessary-stmt
+                - name: unreachable-code
+                - name: use-any
+                - name: use-errors-new
+                - name: use-fmt-print
+                - name: use-slices-sort
+                - name: use-waitgroup-go
+                - name: useless-break
+                - name: useless-fallthrough
+                - name: var-declaration
+                - name: waitgroup-by-value
+        sloglint:
+            key-naming-case: "snake"
+            kv-only: true
+            msg-style: "capitalized"
+            static-msg: true
+        usestdlibvars:
+            http-method: true
+            http-status-code: true
+            time-date-month: true
+            time-weekday: true
+            time-month: true
+            time-layout: true
+            crypto-hash: true
+            default-rpc-path: true
+            sql-isolation-level: true
+            tls-signature-scheme: true
+            constant-kind: true
+        usetesting:
+            os-create-temp: true
+            os-mkdir-temp: true
+            os-setenv: true
+            os-temp-dir: true
+            os-chdir: true
+            context-background: true
+            context-todo: true
+formatters:
+    enable:
+        - gci
+        - gofmt
+        - gofumpt
+    settings:
+        gci:
+            sections:
+                - standard
+                - default
+                - localmodule

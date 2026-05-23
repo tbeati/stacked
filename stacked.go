@@ -23,6 +23,7 @@ import (
 	"iter"
 	"os"
 	"runtime"
+	"slices"
 )
 
 var ignoredErrors = []error{
@@ -36,10 +37,8 @@ var ignoreFuncs []func(error) bool
 // identity; registering the same error twice is a no-op. [io.EOF] is registered
 // by default.
 func Ignore(err error) {
-	for _, ignoredError := range ignoredErrors {
-		if ignoredError == err {
-			return
-		}
+	if slices.Contains(ignoredErrors, err) {
+		return
 	}
 
 	ignoredErrors = append(ignoredErrors, err)
@@ -165,7 +164,7 @@ func wrap(err error, skip int, iterator bool) error {
 		return err
 	}
 
-	_, ok := errors.AsType[*Error](err)
+	_, ok := errors.AsType[*Error](err) //nolint:errcheck
 	if ok {
 		return err
 	}
