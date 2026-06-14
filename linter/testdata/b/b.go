@@ -43,6 +43,11 @@ type Interface interface {
 	MultipleReturn() (int, error)
 }
 
+type IgnoredInterface interface {
+	SingleReturn() error
+	MultipleReturn() (int, error)
+}
+
 func GenericOneParam[T any](v T) error {
 	return nil
 }

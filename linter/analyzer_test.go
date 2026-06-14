@@ -17,6 +17,9 @@ func Test(t *testing.T) {
 			"testdata/generated.WrappedError",
 			"testdata/generated.GenericWrappedError",
 		},
+		IgnoredInterfaces: []string{
+			"testdata/b.IgnoredInterface",
+		},
 		GeneratedFiles: []string{
 			"**/generated/*",
 		},

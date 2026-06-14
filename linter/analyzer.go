@@ -22,12 +22,14 @@ const stackedImportPath = "github.com/tbeati/stacked"
 type Config struct { //nolint:govet
 	IgnoredFunctions       []string           `json:"ignored-functions"`
 	IgnoredTypes           []string           `json:"ignored-types"`
+	IgnoredInterfaces      []string           `json:"ignored-interfaces"`
 	CheckFunctionArguments []FunctionArgument `json:"check-function-arguments"`
 	GeneratedFiles         []string           `json:"generated-files"`
 	WrapChannelReceives    bool               `json:"wrap-channel-receives"`
 
 	ignoredFunctionsMap       map[string]struct{}
 	ignoredTypesMap           map[string]struct{}
+	ignoredInterfacesMap      map[string]struct{}
 	checkFunctionArgumentsMap map[string]int
 }
 
@@ -47,6 +49,11 @@ func (c *Config) init() {
 		c.ignoredTypesMap[t] = struct{}{}
 	}
 
+	c.ignoredInterfacesMap = make(map[string]struct{}, len(c.IgnoredInterfaces))
+	for _, i := range c.IgnoredInterfaces {
+		c.ignoredInterfacesMap[i] = struct{}{}
+	}
+
 	c.checkFunctionArgumentsMap = make(map[string]int, len(c.CheckFunctionArguments))
 	for _, checkFun := range c.CheckFunctionArguments {
 		c.checkFunctionArgumentsMap[checkFun.Function] = checkFun.Argument
@@ -60,6 +67,11 @@ func (c *Config) isIgnoredFunction(function string) bool {
 
 func (c *Config) isIgnoredType(t string) bool {
 	_, found := c.ignoredTypesMap[t]
+	return found
+}
+
+func (c *Config) isIgnoredInterface(i string) bool {
+	_, found := c.ignoredInterfacesMap[i]
 	return found
 }
 
@@ -685,6 +697,10 @@ func (a *analyzer) shouldWrapCall(call *ast.CallExpr) bool {
 		return false
 	}
 
+	if a.isIgnoredInterfaceCall(call) {
+		return false
+	}
+
 	return a.returnsError(call)
 }
 
@@ -766,6 +782,34 @@ func (a *analyzer) isInternalCall(call *ast.CallExpr) bool {
 func (a *analyzer) isIgnoredCall(call *ast.CallExpr) bool {
 	isIgnoredCall, _ := a.isCalledFunctionInSet(call, a.config.isIgnoredFunction)
 	return isIgnoredCall || a.isFmtErrorfWithW(call)
+}
+
+func (a *analyzer) isIgnoredInterfaceCall(call *ast.CallExpr) bool {
+	sel, ok := stripTypeArgs(call.Fun).(*ast.SelectorExpr)
+	if !ok {
+		return false
+	}
+
+	selection := a.pass.TypesInfo.Selections[sel]
+	if selection == nil || selection.Kind() == types.FieldVal {
+		return false
+	}
+
+	named, ok := types.Unalias(selection.Recv()).(*types.Named)
+	if !ok {
+		return false
+	}
+
+	if _, isInterface := named.Underlying().(*types.Interface); !isInterface {
+		return false
+	}
+
+	obj := named.Origin().Obj()
+	if obj.Pkg() == nil {
+		return false
+	}
+
+	return a.config.isIgnoredInterface(obj.Pkg().Path() + "." + obj.Name())
 }
 
 func (a *analyzer) isFmtErrorfWithW(call *ast.CallExpr) bool {

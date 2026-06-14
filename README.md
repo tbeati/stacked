@@ -210,6 +210,19 @@ Type: list of fully-qualified type names, formatted `<import-path>.<Type>`.
 ["net/url.Error"]
 ```
 
+#### `ignored-interfaces`
+
+Interfaces whose methods never need wrapping — for an abstraction whose every
+implementation already returns wrapped errors. Naming an interface suppresses the
+diagnostic for all of its methods, so you don't have to list each one under
+`ignored-functions`.
+
+Type: list of fully-qualified interface type names, formatted `<import-path>.<Type>`.
+
+```json
+["io.Closer"]
+```
+
 #### `check-function-arguments`
 
 Marks a specific function argument as an error supplied for comparison
@@ -282,6 +295,7 @@ working directory:
 {
     "ignored-functions": ["connectrpc.com/connect.NewError"],
     "ignored-types": ["net/url.Error"],
+    "ignored-interfaces": ["io.Closer"],
     "check-function-arguments": [
         { "function": "github.com/stretchr/testify/require.ErrorIs", "argument": 3 }
     ],
@@ -327,6 +341,7 @@ linters:
         settings:
           ignored-functions: ["connectrpc.com/connect.NewError"]
           ignored-types: ["net/url.Error"]
+          ignored-interfaces: ["io.Closer"]
           check-function-arguments:
             - function: github.com/stretchr/testify/require.ErrorIs
               argument: 3
